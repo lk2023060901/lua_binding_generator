@@ -1,0 +1,104 @@
+# 编译产物
+build/debug/
+build/release/
+build/*.log
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# CMake 构建文件
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+install_manifest.txt
+CTestTestfile.cmake
+
+# IDE 文件 (保留 VSCode 配置)
+# .vscode/ - 保留项目配置
+.vscode/c_cpp_properties.json
+.vscode/ipch/
+.idea/
+*.pro.user
+*.vcxproj.user
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志文件
+*.log
+
+# 生成的绑定文件
+generated_bindings/
+bindings/
+
+# 临时文件
+tmp/
+temp/
+.cache/
+.tmp/
+
+# 备份文件
+*.bak
+*.backup
+*~
+
+# Clang 工具生成的文件
+.clang_complete
+.clangd/
+compile_commands.json
+
+# 测试输出
+test_output/
+test_bindings/
+
+# 包管理器文件
+conan.lock
+vcpkg_installed/
+
+# 项目特定的缓存文件
+.lua_binding_cache
+*.cache
+
+# 编辑器配置文件（除了通用的）
+.editorconfig
+.clang-format
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Linux
+.directory
+
+# Node.js (如果有构建脚本)
+node_modules/
+npm-debug.log*
+
+# Python (如果有辅助脚本)
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 第三方库的编译产物（保留源码但忽略编译结果）
+thirdparty/*/build/
+thirdparty/*/CMakeCache.txt
+thirdparty/*/CMakeFiles/
+thirdparty/*/cmake_install.cmake
+thirdparty/*/Makefile
+thirdparty/*/*.o
+thirdparty/*/*.a
+thirdparty/*/*.so
+thirdparty/*/*.dylib
+thirdparty/lua-*/lua
+thirdparty/lua-*/luac
+thirdparty/lua-*/liblua.a

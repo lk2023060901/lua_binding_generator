@@ -1,0 +1,191 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "CMake Configure Debug",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "-B", "build/debug",
+                "-DCMAKE_BUILD_TYPE=Debug",
+                "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": [],
+            "detail": "配置 Debug 构建"
+        },
+        {
+            "label": "Build Debug",
+            "type": "shell",
+            "command": "cmake",
+            "args": ["--build", "build/debug", "--parallel"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": ["$gcc"],
+            "detail": "构建 Debug 版本",
+            "dependsOn": "CMake Configure Debug"
+        },
+        {
+            "label": "CMake Configure Release",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "-B", "build/release",
+                "-DCMAKE_BUILD_TYPE=Release",
+                "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": [],
+            "detail": "配置 Release 构建"
+        },
+        {
+            "label": "Build Release",
+            "type": "shell",
+            "command": "cmake",
+            "args": ["--build", "build/release", "--parallel"],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": ["$gcc"],
+            "detail": "构建 Release 版本",
+            "dependsOn": "CMake Configure Release"
+        },
+        {
+            "label": "Clean Debug",
+            "type": "shell",
+            "command": "cmake",
+            "args": ["--build", "build/debug", "--target", "clean"],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": [],
+            "detail": "清理 Debug 构建文件"
+        },
+        {
+            "label": "Clean Release",
+            "type": "shell",
+            "command": "cmake",
+            "args": ["--build", "build/release", "--target", "clean"],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": [],
+            "detail": "清理 Release 构建文件"
+        },
+        {
+            "label": "Clean All",
+            "type": "shell",
+            "command": "rm",
+            "args": ["-rf", "build"],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": [],
+            "detail": "删除所有构建目录"
+        },
+        {
+            "label": "Generate Lua Bindings (Debug)",
+            "type": "shell",
+            "command": "./build/debug/lua_binding_generator",
+            "args": ["--verbose", "--output_dir=generated_bindings", "examples/comprehensive_test.h"],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": [],
+            "detail": "使用 Debug 版本生成 Lua 绑定",
+            "dependsOn": "Build Debug"
+        },
+        {
+            "label": "Generate Lua Bindings (Release)",
+            "type": "shell",
+            "command": "./build/release/lua_binding_generator",
+            "args": ["--verbose", "--output_dir=generated_bindings", "examples/comprehensive_test.h"],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": [],
+            "detail": "使用 Release 版本生成 Lua 绑定",
+            "dependsOn": "Build Release"
+        },
+        {
+            "label": "Run Tests",
+            "type": "shell",
+            "command": "scripts/test_examples.sh",
+            "args": [],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": [],
+            "detail": "运行绑定生成测试",
+            "dependsOn": "Build Debug"
+        }
+    ]
+}

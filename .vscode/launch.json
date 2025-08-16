@@ -1,0 +1,104 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug lua_binding_generator (CodeLLDB)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/debug/lua_binding_generator",
+            "args": [
+                "--verbose",
+                "--output_dir=generated_bindings",
+                "examples/comprehensive_test.h"
+            ],
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "Build Debug",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Debug lua_binding_generator",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/debug/lua_binding_generator",
+            "args": [
+                "--verbose",
+                "--output_dir=generated_bindings",
+                "examples/comprehensive_test.h"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb",
+            "preLaunchTask": "Build Debug",
+            "logging": {
+                "engineLogging": false,
+                "programOutput": true,
+                "trace": false
+            }
+        },
+        {
+            "name": "Debug with Custom Args",
+            "type": "cppdbg", 
+            "request": "launch",
+            "program": "${workspaceFolder}/build/debug/lua_binding_generator",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb",
+            "preLaunchTask": "Build Debug",
+            "logging": {
+                "engineLogging": false,
+                "programOutput": true,
+                "trace": false
+            }
+        },
+        {
+            "name": "Release lua_binding_generator",
+            "type": "cppdbg",
+            "request": "launch", 
+            "program": "${workspaceFolder}/build/release/lua_binding_generator",
+            "args": [
+                "--verbose",
+                "--output_dir=generated_bindings", 
+                "examples/comprehensive_test.h"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb",
+            "preLaunchTask": "Build Release",
+            "logging": {
+                "engineLogging": false,
+                "programOutput": true,
+                "trace": false
+            }
+        },
+        {
+            "name": "Debug with Log File",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/debug/lua_binding_generator", 
+            "args": [
+                "--verbose",
+                "--log-file=debug.log",
+                "--output_dir=generated_bindings",
+                "examples/comprehensive_test.h"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb",
+            "preLaunchTask": "Build Debug",
+            "logging": {
+                "engineLogging": false,
+                "programOutput": true,
+                "trace": false
+            }
+        }
+    ]
+}
