@@ -1,4 +1,4 @@
-# Lua Binding Generator v1.0
+# Lua Binding Generator
 
 [English](./README_EN.md) | [中文](./README.md)
 
@@ -8,11 +8,12 @@ Lua Binding Generator is a modern C++ to Lua binding generation tool designed to
 
 ### Why Choose Lua Binding Generator?
 
-🚀 **Zero Configuration** - 90% of use cases need only parameter-free macros, say goodbye to tedious configurations  
-🧠 **Smart Inference** - Automatically infer required information from AST, reducing 60-70% of manual input  
-⚡ **Ultimate Performance** - Hard-coded generator, 3-5x faster than traditional template solutions  
-🔄 **Incremental Compilation** - Smart caching mechanism, saving 80-90% of regeneration time  
+🚀 **Zero Configuration** - Most use cases need only parameter-free macros, say goodbye to tedious configurations  
+🧠 **Smart Inference** - Automatically infer required information from AST, significantly reducing manual input  
+⚡ **Ultimate Performance** - Hard-coded generator, efficient and fast  
+🔄 **Incremental Compilation** - Smart caching mechanism, significantly reducing regeneration time  
 🎯 **Full Support** - Covers all modern C++ features including templates, STL, callbacks, etc.  
+🛠️ **Completely Self-Contained** - Built-in all necessary third-party libraries, no additional installation required
 
 ### Quick Start
 
@@ -29,9 +30,9 @@ public:
     Player(const std::string& name, int level);
     
     // These methods will be exported automatically, no additional configuration needed
-    std::string getName() const;
+    std::string getName() const;        // Automatically inferred as read-only property "name"
     void setName(const std::string& name);
-    int getLevel() const;
+    int getLevel() const;               // Automatically inferred as read-only property "level"
     void levelUp();
 };
 
@@ -40,10 +41,10 @@ EXPORT_LUA_FUNCTION()
 double calculateDistance(double x1, double y1, double x2, double y2);
 
 // 5. Generate bindings
-// lua_binding_generator examples/your_code.h
+// ./lua_binding_generator examples/your_code.h
 ```
 
-### Smart Features
+### Core Features
 
 🔍 **Automatic Inference**:
 - Class names, method names, function names automatically extracted from code
@@ -54,46 +55,11 @@ double calculateDistance(double x1, double y1, double x2, double y2);
 ⚡ **Incremental Compilation**:
 - Smart caching based on file content hashes
 - Only regenerate changed files
-- Save 80-90% regeneration time in large projects
+- Significantly reduce regeneration time in large projects
 
 🎯 **Parallel Processing**:
 - Multi-threaded parallel analysis and generation
 - Smart task allocation and load balancing
-
-## Usage Comparison
-
-### Old Version (Template System)
-```cpp
-// Required duplicate name input, complex configuration
-class EXPORT_LUA_CLASS(Player, namespace=game) Player {
-public:
-    EXPORT_LUA_METHOD(getName)
-    std::string getName() const;
-    
-    EXPORT_LUA_METHOD(setName)
-    void setName(const std::string& name);
-    
-    EXPORT_LUA_READONLY_PROPERTY(level, getter=getLevel)
-    int getLevel() const;
-};
-```
-
-### New Version (Smart Inference)
-```cpp
-// Zero configuration, completely automatic inference
-EXPORT_LUA_MODULE(GameCore)
-
-class EXPORT_LUA_CLASS() Player {  // Automatically infer class name and namespace
-public:
-    // All public members automatically exported, no additional marking needed
-    std::string getName() const;        // Automatically export method
-    void setName(const std::string&);   // Automatically export method
-    int getLevel() const;               // Automatically infer as read-only property
-    
-    EXPORT_LUA_IGNORE()                 // Only mark when exclusion needed
-    void internalMethod();
-};
-```
 
 ## Supported Macro List
 
@@ -110,11 +76,11 @@ public:
 | `EXPORT_LUA_FUNCTION` | Function export | `EXPORT_LUA_FUNCTION() int calc();` |
 | `EXPORT_LUA_VARIABLE` | Variable export | `EXPORT_LUA_VARIABLE() static int level;` |
 | `EXPORT_LUA_CONSTANT` | Constant export | `EXPORT_LUA_CONSTANT() const int MAX = 100;` |
-| `EXPORT_LUA_STL` | STL container export | `EXPORT_LUA_STL(std::vector<int>)` |
+| `EXPORT_LUA_VECTOR` | Vector container | `EXPORT_LUA_VECTOR(int)` |
+| `EXPORT_LUA_MAP` | Map container | `EXPORT_LUA_MAP(std::string, int)` |
 | `EXPORT_LUA_CALLBACK` | Callback function export | `EXPORT_LUA_CALLBACK() std::function<void()> cb;` |
 | `EXPORT_LUA_OPERATOR` | Operator export | `EXPORT_LUA_OPERATOR(+) Vector operator+();` |
 | `EXPORT_LUA_TEMPLATE` | Template class export | `class EXPORT_LUA_TEMPLATE(T) Container {}` |
-| `EXPORT_LUA_TEMPLATE_INSTANCE` | Template instance export | `EXPORT_LUA_TEMPLATE_INSTANCE(Container<int>)` |
 | `EXPORT_LUA_IGNORE` | Ignore export | `EXPORT_LUA_IGNORE() void internal();` |
 
 ### Convenience Macros
@@ -128,10 +94,10 @@ public:
 
 ### Zero Configuration Usage Example
 
-The following example demonstrates the zero-configuration usage of the new version tool:
+The following example demonstrates the zero-configuration usage:
 
 ```cpp
-#include "common/lua/export_macros.h"
+#include "export_macros.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -204,7 +170,7 @@ static const double PI = 3.14159;
 ### Advanced Features Usage Example
 
 ```cpp
-#include "common/lua/export_macros.h"
+#include "export_macros.h"
 
 EXPORT_LUA_MODULE(AdvancedFeatures)
 
@@ -260,36 +226,7 @@ protected:
     bool active_ = true;
 };
 
-// 4. Concrete derived class - automatically handle inheritance relationships
-class EXPORT_LUA_CLASS() TransformComponent : public Component {
-public:
-    TransformComponent();
-    TransformComponent(double x, double y, double rotation);
-    
-    // Implement base class interface
-    void initialize() override;
-    void update(double deltaTime) override;
-    void destroy() override;
-    
-    // Position properties - automatically inferred
-    double getX() const;
-    void setX(double x);
-    
-    double getY() const;
-    void setY(double y);
-    
-    double getRotation() const;
-    void setRotation(double rotation);
-    
-    // Convenience methods
-    void translate(double dx, double dy);
-    void rotate(double angle);
-
-private:
-    double x_ = 0.0, y_ = 0.0, rotation_ = 0.0;
-};
-
-// 5. Operator overloading - automatically map to Lua metamethods
+// 4. Operator overloading - automatically map to Lua metamethods
 class EXPORT_LUA_CLASS() Vector2D {
 public:
     Vector2D();
@@ -315,21 +252,9 @@ public:
     EXPORT_LUA_OPERATOR(==)
     bool operator==(const Vector2D& other) const;       // Map to __eq
     
-    EXPORT_LUA_OPERATOR(<)
-    bool operator<(const Vector2D& other) const;        // Map to __lt
-    
     // Subscript operator
     EXPORT_LUA_OPERATOR([])
     double operator[](int index) const;                 // Map to __index
-    
-    // Unary operator
-    EXPORT_LUA_OPERATOR(-)
-    Vector2D operator-() const;                         // Map to __unm
-    
-    // Utility methods
-    double length() const;
-    Vector2D normalized() const;
-    double dot(const Vector2D& other) const;
 
 private:
     double x_, y_;
@@ -337,16 +262,16 @@ private:
 
 } // namespace advanced
 
-// 6. STL container export - automatically generate complete bindings
-EXPORT_LUA_STL(std::vector<int>)
-EXPORT_LUA_STL(std::vector<std::string>)
-EXPORT_LUA_STL(std::vector<std::shared_ptr<game::Player>>)
-EXPORT_LUA_STL(std::map<std::string, int>)
-EXPORT_LUA_STL(std::map<int, std::shared_ptr<game::Player>>)
+// 5. STL container export - automatically generate complete bindings
+EXPORT_LUA_VECTOR(int)
+EXPORT_LUA_VECTOR(std::string)
+EXPORT_LUA_VECTOR(std::shared_ptr<game::Player>)
+EXPORT_LUA_MAP(std::string, int)
+EXPORT_LUA_MAP(int, std::shared_ptr<game::Player>)
 
 namespace events {
 
-// 7. Event system - automatically infer callback functions
+// 6. Event system - automatically infer callback functions
 class EXPORT_LUA_CLASS() EventSystem {
 public:
     EventSystem();
@@ -359,15 +284,11 @@ public:
     std::function<void(std::shared_ptr<game::Player>)> OnPlayerJoin;  // Single parameter callback
     
     EXPORT_LUA_CALLBACK()
-    std::function<void(std::shared_ptr<game::Player>, int, int)> OnPlayerLevelUp;  // Multi-parameter callback
-    
-    EXPORT_LUA_CALLBACK()
     std::function<bool(const std::string&, double)> OnValidateAction;  // Return value callback
     
     // Event trigger methods
     void triggerGameStart();
     void triggerPlayerJoin(std::shared_ptr<game::Player> player);
-    void triggerPlayerLevelUp(std::shared_ptr<game::Player> player, int oldLevel, int newLevel);
     bool validateAction(const std::string& action, double value);
 
 private:
@@ -375,178 +296,111 @@ private:
 };
 
 } // namespace events
-
-// 8. Template class support
-namespace containers {
-
-template<typename T>
-class EXPORT_LUA_TEMPLATE(T) Container {
-public:
-    Container();
-    explicit Container(const T& defaultValue);
-    
-    void add(const T& item);
-    T get(size_t index) const;
-    void set(size_t index, const T& item);
-    
-    size_t size() const;
-    bool empty() const;
-    void clear();
-    
-    T& operator[](size_t index);
-    const T& operator[](size_t index) const;
-
-private:
-    std::vector<T> items_;
-    T default_value_;
-};
-
-// Template instantiation - generate bindings for specific types
-EXPORT_LUA_TEMPLATE_INSTANCE(Container<int>)
-EXPORT_LUA_TEMPLATE_INSTANCE(Container<std::string>, alias=StringContainer)
-EXPORT_LUA_TEMPLATE_INSTANCE(Container<double>, alias=DoubleContainer)
-
-} // namespace containers
-```
-
-### Custom Configuration Example
-
-When you need custom namespaces or aliases:
-
-```cpp
-#include "common/lua/export_macros.h"
-
-EXPORT_LUA_MODULE(CustomizedExample)
-
-namespace combat {
-
-// Custom namespace and alias
-class EXPORT_LUA_CLASS(namespace=combat, alias=Warrior) Fighter {
-public:
-    Fighter(const std::string& name, int level);
-    
-    // Custom method alias
-    EXPORT_LUA_METHOD(alias=getDamageValue)
-    int getDamage() const;
-    
-    // Custom property configuration
-    EXPORT_LUA_PROPERTY(alias=weaponName, access=readonly)
-    std::string getWeaponName() const;
-
-private:
-    std::string name_;
-    int level_;
-    int damage_;
-};
-
-// Custom function namespace and alias
-EXPORT_LUA_FUNCTION(namespace=combat, alias=computeBattleDamage)
-int calculateDamage(const Fighter& attacker, const Fighter& defender);
-
-// Custom constant
-EXPORT_LUA_CONSTANT(namespace=config, alias=maxFighters)
-static const int MAX_FIGHTERS = 50;
-
-} // namespace combat
 ```
 
 ## Build and Usage
 
-### 1. Build Tool
+### 1. System Requirements
 
-The project is self-contained with all necessary third-party library source code (including LLVM/Clang), no additional system dependencies required:
+- **C++17** compatible compiler (GCC 7+, Clang 7+, MSVC 2019+)
+- **CMake 3.16+**
+- **Operating Systems**: Linux, macOS, Windows
+
+The project is self-contained with all necessary third-party library source code, no additional system dependencies required.
+
+### 2. Build Tool
 
 ```bash
 # Build from project root directory
 mkdir build && cd build
 cmake ..
 make
+
+# Or use automation script
+./scripts/build_and_test_all.sh
 ```
 
-### 2. VSCode Development Environment (Recommended)
+### 3. Using Automation Scripts
 
-The project provides complete VSCode development environment configuration, supporting debug and release builds:
-
-#### 2.1 Quick Start
-
-1. Open project root directory with VSCode
-2. Install recommended extensions (C/C++, CMake Tools)
-3. Press `Ctrl+Shift+P` to open command palette, select `Tasks: Run Task`
-
-#### 2.2 Available Build Tasks
-
-- **Build Debug**: Build debug version to `build/debug`
-- **Build Release**: Build release version to `build/release`
-- **Clean Debug**: Clean debug build
-- **Clean Release**: Clean release build
-- **Generate Bindings Debug**: Generate binding files using debug version
-- **Generate Bindings Release**: Generate binding files using release version
-
-#### 2.3 Debug Configurations
-
-The project provides multiple debug configurations:
-
-- **Debug lua_binding_generator**: Debug main program
-- **Debug with Custom Args**: Debug with custom arguments
-- **Debug with Log File**: Debug and output log file
-- **Debug Comprehensive Test**: Debug comprehensive test example
-
-#### 2.4 Using Scripts for Automation
+#### Unix/Linux/macOS
 
 ```bash
-# Unix/Linux/macOS
-./scripts/generate_bindings.sh --help        # View script help
-./scripts/generate_bindings.sh               # Generate binding files
-./scripts/generate_bindings.sh -b release -v # Use Release version and enable verbose output
-./scripts/test_examples.sh                   # Run all tests
-./scripts/test_examples.sh examples/comprehensive_test.h  # Test specific file
+# Complete build and test workflow
+./scripts/build_and_test_all.sh
 
-# Windows
-scripts\generate_bindings.bat /help          # View script help  
-scripts\generate_bindings.bat                # Generate binding files
-scripts\generate_bindings.bat /b release /v  # Use Release version and enable verbose output
-scripts\test_examples.bat                    # Run all tests
-scripts\test_examples.bat examples\comprehensive_test.h  # Test specific file
+# With clean option
+./scripts/build_and_test_all.sh --clean
+
+# Clean third-party library build artifacts (free disk space)
+./scripts/build_and_test_all.sh --clean-thirdparty
+
+# Complete third-party library cleanup (including executables)
+./scripts/build_and_test_all.sh --clean-thirdparty-full
+
+# Verbose output
+./scripts/build_and_test_all.sh --verbose
+
+# Show help
+./scripts/build_and_test_all.sh --help
 ```
 
-#### 2.5 CMake Integrated Binding Generation
+#### Windows
 
-Enable CMake automatic binding generation feature:
+```cmd
+# Complete build and test workflow
+scripts\build_and_test_all.bat
+
+# With clean option
+scripts\build_and_test_all.bat /clean
+
+# Verbose output
+scripts\build_and_test_all.bat /verbose
+
+# Show help
+scripts\build_and_test_all.bat /help
+```
+
+### 4. Third-party Library Cleanup Tool
+
+The project provides dedicated scripts to clean third-party library build artifacts, helping save disk space:
 
 ```bash
-# Enable automatic binding generation during configuration
-cmake -B build/debug -DCMAKE_BUILD_TYPE=Debug -DGENERATE_LUA_BINDINGS=ON
+# Light cleanup (CMake cache, temporary files)
+./scripts/clean_thirdparty.sh
 
-# Build project (will automatically generate binding files)
-cmake --build build/debug
+# Complete cleanup (all build artifacts)
+./scripts/clean_thirdparty.sh --level=full
 
-# Or manually run binding generation
-cmake --build build/debug --target generate_lua_bindings
+# Preview cleanup content (without actually deleting)
+./scripts/clean_thirdparty.sh --dry-run
 
-# Run binding tests
-cmake --build build/debug --target test_lua_bindings
+# Clean specific library
+./scripts/clean_thirdparty.sh --library=llvm
+
+# Create backup
+./scripts/clean_thirdparty.sh --level=full --backup
 ```
 
-### 3. Generate Lua Bindings
+### 5. Generate Lua Bindings
 
 ```bash
 # Simplest form
-./lua_binding_generator examples/comprehensive_test.h
+./lua_binding_generator examples/simple_example.h
 
-# Specify module name and output directory
-./lua_binding_generator --module-name=GameCore --output-dir=bindings examples/*.h
+# Process multiple files
+./lua_binding_generator examples/*.h
 
-# Enable incremental compilation and verbose output
-./lua_binding_generator --incremental --verbose examples/*.h
+# Specify output directory and module name
+./lua_binding_generator --output-dir=bindings --module-name=GameCore examples/*.h
 
-# Parallel processing for large projects
-./lua_binding_generator --parallel --max-threads=4 src/**/*.h
+# Enable verbose output
+./lua_binding_generator --verbose examples/*.h
 
-# Use configuration file
-./lua_binding_generator --config=examples/lua_bindings_config.json src/*.h
+# Force regeneration of all files
+./lua_binding_generator --force-rebuild examples/*.h
 ```
 
-### 4. Command Line Options
+### 6. Command Line Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -558,7 +412,6 @@ cmake --build build/debug --target test_lua_bindings
 | `--max-threads` | `0` (auto) | Maximum number of threads |
 | `--verbose` | `false` | Verbose output |
 | `--show-stats` | `false` | Show statistics |
-| `--config` | None | Configuration file path |
 
 ## Automatic Inference Features
 
@@ -616,72 +469,7 @@ public:
 };
 ```
 
-## Performance Optimization
-
-### Incremental Compilation
-
-- Smart caching based on file content hashes
-- Dependency tracking and propagation
-- Can save 80-90% of regeneration time in large projects
-
-### Parallel Processing
-
-- Multi-threaded parallel analysis and generation
-- Smart task allocation
-- Support for fast processing of large projects
-
-### Memory Optimization
-
-- Remove template parsing overhead
-- Direct string operations
-- Optimized AST traversal
-
-## Generated Binding Features
-
-### Sol2 Best Practices
-
-Generated code follows Sol2 framework best practices:
-
-- Type-safe bindings
-- Complete error handling
-- Performance-optimized code structure
-- Clear code organization
-
-### Lua-Friendly Features
-
-- Metamethod support (operator overloading)
-- Property access syntax
-- Container iterator support
-- Exception handling
-
-## Configuration File Format
-
-```json
-{
-  "version": "2.0",
-  "output": {
-    "directory": "generated_bindings",
-    "module_name": "MyGameCore",
-    "default_namespace": "global"
-  },
-  "inference": {
-    "auto_infer_namespaces": true,
-    "auto_infer_properties": true,
-    "auto_infer_stl_containers": true,
-    "auto_infer_callbacks": true
-  },
-  "incremental": {
-    "enabled": true,
-    "cache_file": ".lua_binding_cache"
-  },
-  "performance": {
-    "enable_parallel": true,
-    "max_threads": 4
-  }
-}
-```
-
-## Generated Lua Binding Code Example
+## Generated Binding Code Example
 
 For the above `Player` class, the tool will generate Sol2 binding code like this:
 
@@ -732,37 +520,83 @@ void register_GameCore_bindings(sol::state& lua) {
 
 ## Project Structure
 
-Project structure after refactoring:
-
 ```
-zeus/
-├── include/common/lua/
-│   └── export_macros.h                 # Smart inference macro definitions (moved to common location)
-└── tools/lua_binding_generator/
-    ├── include/lua_binding_generator/
-    │   ├── direct_binding_generator.h   # Hard-coded binding generator
-    │   ├── smart_inference_engine.h     # Smart inference engine
-    │   ├── incremental_generator.h      # Incremental compilation system
-    │   └── ast_visitor.h               # AST visitor
-    ├── src/                            # Corresponding implementation files
-    ├── examples/
-    │   ├── basic_usage_example.h       # Basic usage example
-    │   ├── comprehensive_test.h        # Complete feature test
-    │   └── lua_bindings_config.json    # Configuration file example
-    ├── main.cpp                        # Main program (renamed)
-    ├── CMakeLists.txt                  # Build configuration
-    └── README.md                       # This document
+lua_binding_generator/
+├── CMakeLists.txt                      # Main build configuration
+├── main.cpp                            # Tool main program entry
+├── README.md                           # Project documentation (Chinese)
+├── README_EN.md                        # Project documentation (English)
+├── include/                            # Header files directory
+│   ├── export_macros.h                 # Smart inference macro definitions
+│   ├── ast_visitor.h                   # AST visitor
+│   ├── direct_binding_generator.h      # Hard-coded binding generator
+│   ├── smart_inference_engine.h        # Smart inference engine
+│   ├── incremental_generator.h         # Incremental compilation system
+│   ├── compiler_detector.h             # Compiler detection
+│   ├── dynamic_compilation_database.h  # Dynamic compilation database
+│   └── logger.h                        # Logging system
+├── src/                                # Source files directory
+│   ├── ast_visitor.cpp
+│   ├── direct_binding_generator.cpp
+│   ├── smart_inference_engine.cpp
+│   ├── incremental_generator.cpp
+│   ├── compiler_detector.cpp
+│   ├── dynamic_compilation_database.cpp
+│   └── logger.cpp
+├── examples/                           # Example code
+│   ├── simple_example.h                # Simple usage example
+│   ├── simple_example.cpp
+│   ├── simple_main.cpp
+│   ├── game_engine.h                   # Game engine example
+│   ├── game_engine.cpp
+│   ├── game_engine_main.cpp
+│   ├── comprehensive_test.h            # Complete feature test
+│   ├── comprehensive_test.cpp
+│   ├── comprehensive_main.cpp
+│   └── scripts/                        # Lua test scripts
+│       ├── test_simple.lua
+│       ├── test_game_engine.lua
+│       ├── test_comprehensive.lua
+│       ├── test_bindings_integration.lua
+│       └── README.md
+├── scripts/                            # Automation scripts
+│   ├── build_and_test_all.sh           # Unix/Linux/macOS build script
+│   ├── build_and_test_all.bat          # Windows build script
+│   ├── clean_thirdparty.sh             # Unix third-party cleanup script
+│   ├── clean_thirdparty.bat            # Windows third-party cleanup script
+│   └── README.md                       # Script usage documentation
+├── generated_bindings/                 # Generated binding files (created at runtime)
+│   └── generated_module_bindings.cpp
+├── build/                              # Build directory (created at runtime)
+└── thirdparty/                         # Third-party libraries (self-contained)
+    ├── llvm-20.1.8/                    # LLVM compiler infrastructure
+    ├── clang-tools-extra-20.1.8.src/   # Clang tools extra
+    ├── lua-5.4.8/                      # Lua interpreter
+    ├── sol2-3.3.0/                     # Sol2 C++ Lua binding library
+    ├── spdlog-1.15.3/                  # High-performance logging library
+    └── zstd-1.5.7/                     # Compression library
 ```
 
-## Comparison with Old Version
 
-| Feature | Old Version | New Version | Improvement |
-|---------|-------------|-------------|-------------|
-| Usage Complexity | Requires lots of configuration parameters | Zero configuration, smart inference | 70% simplification |
-| Generation Speed | Template-based parsing | Hard-coded generator | 3-5x improvement |
-| Incremental Compilation | Not supported | Smart caching | Save 80-90% time |
-| C++ Feature Support | Basic features | Full modern C++ | Complete coverage |
-| Code Quality | Template-driven | Sol2 best practices | Higher quality |
+## Performance Optimization
+
+### Incremental Compilation
+
+- Smart caching based on file content hashes
+- Dependency tracking and propagation
+- Can significantly reduce regeneration time in large projects
+
+### Parallel Processing
+
+- Multi-threaded parallel analysis and generation
+- Smart task allocation
+- Support for fast processing of large projects
+
+### Memory Optimization
+
+- Remove template parsing overhead
+- Direct string operations
+- Optimized AST traversal
 
 ## Troubleshooting
 
@@ -784,6 +618,10 @@ zeus/
    - Check Sol2 version compatibility
    - Look at error messages in generated code
 
+5. **Third-party libraries taking too much disk space**
+   - Use cleanup script: `./scripts/clean_thirdparty.sh --level=full`
+   - Regularly clean build artifacts
+
 ### Debug Options
 
 ```bash
@@ -797,38 +635,18 @@ zeus/
 ./lua_binding_generator --parallel=false examples/*.h
 ```
 
-## Compilation Status ✅
-
-### Fixed Compilation Issues
-
-1. **CMakeLists.txt source file reference errors** - Updated source file list to reference new refactored files
-2. **Default constructor parameter conflicts** - Separated constructor declarations to avoid C++17 compiler errors  
-3. **Exception handling disabled** - Removed `-fno-exceptions` compile flag
-4. **Missing struct members** - Added necessary fields to ExportInfo
-5. **String concatenation errors** - Fixed ternary operator string concatenation issues
-6. **Missing headers** - Added necessary standard library header includes (`<set>`, `<queue>`, `<mutex>`, `<functional>`)
-7. **Missing struct fields** - Added `property_access` field to ExportInfo
-8. **Clang API compatibility** - Fixed `TemplateSpecializationType` and `SourceManager` API changes
-
-### Compilation Status
-
-- **Syntax Check**: ✅ Passes C++17 standard compiler validation
-- **Header Dependencies**: ✅ All standard library dependencies correctly included  
-- **Structure Definitions**: ✅ All data structures complete and consistent
-- **Third-party Libraries**: ✅ Project self-contains all necessary dependency libraries
-- **Final Compilation**: ✅ Successfully compiled with no warnings or errors
-
 ## Summary
 
-This refactoring achieved the following key goals:
+lua_binding_generator achieves the following key goals:
 
-1. **Zero Configuration Usage** - 90% of scenarios need only parameter-free macros
-2. **Smart Inference** - Automatically infer 70% of configuration information from AST  
+1. **Zero Configuration Usage** - Most scenarios need only parameter-free macros
+2. **Smart Inference** - Automatically infer most configuration information from AST  
 3. **Full Coverage** - Support all modern C++ features
-4. **High Performance** - 3-5x performance improvement, incremental compilation saves 80-90% time
-5. **Easy to Use** - Macros placed in common project location, convenient for all modules
+4. **High Performance** - Hard-coded generator, efficient incremental compilation
+5. **Completely Self-Contained** - Built-in all dependencies, simplified deployment
+6. **Cross-Platform Support** - Full platform support for Linux, macOS, Windows
 
-The new version of lua_binding_generator truly achieves the design goal of "minimizing user mental burden and maximizing work efficiency".
+lua_binding_generator truly achieves the design goal of "minimizing user mental burden and maximizing work efficiency".
 
 ## Contributing
 
