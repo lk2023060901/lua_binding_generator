@@ -173,11 +173,87 @@ DirectBindingGenerator::GenerationResult DirectBindingGenerator::GenerateModuleB
                 // 找到这个类的所有成员
                 std::vector<ExportInfo> members;
                 for (const auto& item : export_items) {
-                    if (item.parent_class == class_info.name) {
+                    if (item.parent_class == class_info.name || 
+                        item.owner_class == class_info.name) {
                         members.push_back(item);
                     }
                 }
+                
+                // 调试输出
+                std::string debug_comment = "// DEBUG: Class " + class_info.name + " has " + 
+                                          std::to_string(members.size()) + " members";
+                bindings_builder.AddLine(debug_comment);
+                for (const auto& member : members) {
+                    std::string member_debug = "// DEBUG: Member - " + member.export_type + "::" + 
+                                             member.name + " (parent: " + member.parent_class + ")";
+                    bindings_builder.AddLine(member_debug);
+                }
+                
                 bindings_builder.AddLine(GenerateClassBinding(class_info, members));
+                bindings_builder.AddEmptyLine();
+                result.total_bindings++;
+            }
+        }
+        
+        // 生成静态类绑定
+        if (grouped_exports.count("static_class") > 0) {
+            bindings_builder.AddComment("Static class bindings");
+            for (const auto& class_info : grouped_exports["static_class"]) {
+                std::vector<ExportInfo> members;
+                for (const auto& item : export_items) {
+                    if (item.parent_class == class_info.name || 
+                        item.owner_class == class_info.name) {
+                        members.push_back(item);
+                    }
+                }
+                
+                // 调试输出
+                std::string debug_comment = "// DEBUG: Static class " + class_info.name + " has " + 
+                                          std::to_string(members.size()) + " members";
+                bindings_builder.AddLine(debug_comment);
+                for (const auto& member : members) {
+                    std::string member_debug = "// DEBUG: Member - " + member.export_type + "::" + 
+                                             member.name + " (parent: " + member.parent_class + ")";
+                    bindings_builder.AddLine(member_debug);
+                }
+                
+                bindings_builder.AddLine(GenerateStaticClassBinding(class_info, members));
+                bindings_builder.AddEmptyLine();
+                result.total_bindings++;
+            }
+        }
+        
+        // 生成抽象类绑定
+        if (grouped_exports.count("abstract_class") > 0) {
+            bindings_builder.AddComment("Abstract class bindings");
+            for (const auto& class_info : grouped_exports["abstract_class"]) {
+                std::vector<ExportInfo> members;
+                for (const auto& item : export_items) {
+                    if (item.parent_class == class_info.name || 
+                        item.owner_class == class_info.name) {
+                        members.push_back(item);
+                    }
+                }
+                
+                
+                bindings_builder.AddLine(GenerateAbstractClassBinding(class_info, members));
+                bindings_builder.AddEmptyLine();
+                result.total_bindings++;
+            }
+        }
+        
+        // 生成单例绑定
+        if (grouped_exports.count("singleton") > 0) {
+            bindings_builder.AddComment("Singleton bindings");
+            for (const auto& class_info : grouped_exports["singleton"]) {
+                std::vector<ExportInfo> members;
+                for (const auto& item : export_items) {
+                    if (item.parent_class == class_info.name || 
+                        item.owner_class == class_info.name) {
+                        members.push_back(item);
+                    }
+                }
+                bindings_builder.AddLine(GenerateSingletonBinding(class_info, members));
                 bindings_builder.AddEmptyLine();
                 result.total_bindings++;
             }
@@ -213,6 +289,36 @@ DirectBindingGenerator::GenerationResult DirectBindingGenerator::GenerateModuleB
             }
         }
         
+        // 生成常量绑定
+        if (grouped_exports.count("constant") > 0) {
+            bindings_builder.AddComment("Constant bindings");
+            
+            // 按命名空间分组常量绑定
+            std::unordered_map<std::string, std::vector<ExportInfo>> const_by_namespace;
+            for (const auto& const_info : grouped_exports["constant"]) {
+                std::string ns = namespace_manager_.ResolveNamespace(const_info);
+                const_by_namespace[ns].push_back(const_info);
+            }
+            
+            // 为每个命名空间生成常量绑定
+            for (const auto& [ns, constants] : const_by_namespace) {
+                if (constants.size() > 1) {
+                    std::string ns_comment = (ns == "global") ? "Global constants" : 
+                                           "Constants in namespace " + ns;
+                    bindings_builder.AddComment(ns_comment);
+                }
+                
+                for (const auto& const_info : constants) {
+                    bindings_builder.AddLine(GenerateConstantBinding(const_info));
+                    result.total_bindings++;
+                }
+                
+                if (constants.size() > 1) {
+                    bindings_builder.AddEmptyLine();
+                }
+            }
+        }
+        
         // 生成枚举绑定
         if (grouped_exports.count("enum") > 0) {
             bindings_builder.AddComment("Enum bindings");
@@ -233,8 +339,18 @@ DirectBindingGenerator::GenerationResult DirectBindingGenerator::GenerateModuleB
                 }
                 
                 for (const auto& enum_info : enums) {
-                    // TODO: 从 AST 提取枚举值
-                    std::vector<std::string> enum_values; 
+                    // 从 ExportInfo 提取枚举值
+                    std::vector<std::string> enum_values;
+                    if (enum_info.attributes.count("enum_values")) {
+                        std::string values_str = enum_info.attributes.at("enum_values");
+                        if (!values_str.empty()) {
+                            std::stringstream ss(values_str);
+                            std::string value;
+                            while (std::getline(ss, value, ',')) {
+                                enum_values.push_back(value);
+                            }
+                        }
+                    }
                     bindings_builder.AddLine(GenerateEnumBinding(enum_info, enum_values));
                     result.total_bindings++;
                 }
@@ -276,6 +392,16 @@ DirectBindingGenerator::GenerationResult DirectBindingGenerator::GenerateModuleB
 
 std::string DirectBindingGenerator::GenerateClassBinding(const ExportInfo& class_info,
                                                        const std::vector<ExportInfo>& members) {
+    // 检查参数数量，如果超过阈值则使用分批绑定
+    const size_t MAX_PARAMETERS = 20; // Sol2的安全参数限制
+    size_t param_count = CalculateBindingParameterCount(members, class_info);
+    
+    if (param_count > MAX_PARAMETERS) {
+        // 使用分批绑定
+        return GenerateBatchedClassBinding(class_info, members);
+    }
+    
+    // 使用传统的单次绑定
     CodeBuilder builder(options_.indent_size);
     
     std::string namespace_var = namespace_manager_.GetNamespaceVariable(
@@ -318,21 +444,55 @@ std::string DirectBindingGenerator::GenerateClassBinding(const ExportInfo& class
     // 收集所有绑定项
     std::vector<std::string> all_bindings;
     
-    // 生成继承关系 (必须在构造函数之前)
-    if (!class_info.base_classes.empty()) {
-        all_bindings.push_back(GenerateInheritanceCode(class_info));
+    // 生成构造函数绑定 - 使用 Sol2 构造函数模板 (必须第一个)
+    if (!constructors.empty()) {
+        std::string ctor_binding = GenerateConstructorBindings(constructors);
+        all_bindings.push_back(ctor_binding);
+    } else {
+        // 如果没有找到构造函数，生成默认的空构造函数
+        all_bindings.push_back("sol::constructors<>()");
     }
     
-    // 生成构造函数绑定
-    for (const auto& ctor : constructors) {
-        std::string ctor_name = ctor.lua_name.empty() ? ctor.name : ctor.lua_name;
-        std::string qualified_ctor_name = GetQualifiedTypeName(ctor);
-        all_bindings.push_back("\"" + ctor_name + "\", &" + qualified_ctor_name);
+    // 生成继承关系 (需要分成两个参数: sol::base_classes 和 sol::bases<...>())
+    // 注意：只有当基类也被导出时才包含继承关系
+    // 当前简化处理：暂时跳过继承关系声明，避免引用未导出的基类
+    if (!class_info.base_classes.empty()) {
+        // TODO: 添加基类导出状态检查逻辑
+        // 现在暂时注释掉，避免引用未导出的Entity类
+        /*
+        all_bindings.push_back("sol::base_classes");
+        
+        std::string bases_spec = "sol::bases<";
+        for (size_t i = 0; i < class_info.base_classes.size(); ++i) {
+            if (i > 0) bases_spec += ", ";
+            // Use fully qualified base class names
+            std::string base_class = class_info.base_classes[i];
+            if (base_class.find("::") == std::string::npos) {
+                // Base class without namespace - need to fully qualify it
+                std::string qualified_name = GetQualifiedTypeName(class_info);
+                size_t last_scope = qualified_name.find_last_of("::");
+                if (last_scope != std::string::npos) {
+                    // Extract the namespace part
+                    std::string base_namespace = qualified_name.substr(0, last_scope - 1);
+                    base_class = base_namespace + "::" + base_class;
+                }
+            }
+            bases_spec += base_class;
+        }
+        bases_spec += ">()";
+        all_bindings.push_back(bases_spec);
+        */
     }
     
     // 生成方法绑定
     for (const auto& method : methods) {
         std::string method_name = method.lua_name.empty() ? method.name : method.lua_name;
+        
+        // 跳过不能绑定的操作符
+        if (method_name == "operator=" || method_name == "operator->" || method_name == "operator&") {
+            continue;
+        }
+        
         std::string qualified_method_name = GetQualifiedTypeName(method);
         all_bindings.push_back("\"" + method_name + "\", &" + qualified_method_name);
     }
@@ -351,16 +511,44 @@ std::string DirectBindingGenerator::GenerateClassBinding(const ExportInfo& class
         
         if (prop.property_access == "readonly") {
             all_bindings.push_back("\"" + prop_name + "\", sol::readonly_property(&" + qualified_prop_name + ")");
+        } else if (prop.property_access == "readwrite") {
+            // 查找 setter 方法
+            std::string setter_name;
+            if (prop.attributes.count("setter")) {
+                setter_name = prop.attributes.at("setter");
+            } else {
+                // 默认 setter 名称：将 getXxx 替换为 setXxx
+                std::string getter_name = prop.name;
+                if (getter_name.find("get") == 0 && getter_name.length() > 3) {
+                    setter_name = "set" + getter_name.substr(3);
+                } else {
+                    setter_name = "set" + getter_name;
+                }
+            }
+            
+            // 构造 setter 的完全限定名
+            std::string setter_qualified_name;
+            if (!prop.namespace_name.empty()) {
+                setter_qualified_name = prop.namespace_name + "::";
+            }
+            if (!prop.parent_class.empty()) {
+                setter_qualified_name += prop.parent_class + "::";
+            }
+            setter_qualified_name += setter_name;
+            
+            all_bindings.push_back("\"" + prop_name + "\", sol::property(&" + qualified_prop_name + ", &" + setter_qualified_name + ")");
         } else {
-            all_bindings.push_back("\"" + prop_name + "\", sol::property(&" + qualified_prop_name + ")");
+            // 默认为只读
+            all_bindings.push_back("\"" + prop_name + "\", sol::readonly_property(&" + qualified_prop_name + ")");
         }
     }
     
     // 生成操作符绑定
     for (const auto& op : operators) {
-        std::string op_name = op.lua_name.empty() ? op.name : op.lua_name;
-        std::string qualified_op_name = GetQualifiedTypeName(op);
-        all_bindings.push_back("\"" + op_name + "\", &" + qualified_op_name);
+        std::string op_binding = GenerateOperatorBinding(op);
+        if (!op_binding.empty()) {
+            all_bindings.push_back(op_binding);
+        }
     }
     
     // 输出所有绑定项，除了最后一项外都加逗号
@@ -381,6 +569,325 @@ std::string DirectBindingGenerator::GenerateClassBinding(const ExportInfo& class
     
     builder.DecreaseIndent();
     builder.AddIndentedLine(");");
+    
+    return builder.Build();
+}
+
+std::string DirectBindingGenerator::GenerateAbstractClassBinding(const ExportInfo& class_info,
+                                                               const std::vector<ExportInfo>& members) {
+    // 为抽象类生成绑定，不包含构造函数
+    CodeBuilder builder(options_.indent_size);
+    
+    std::string namespace_var = namespace_manager_.GetNamespaceVariable(
+        namespace_manager_.ResolveNamespace(class_info));
+    
+    std::string lua_class_name = class_info.lua_name.empty() ? class_info.name : class_info.lua_name;
+    std::string qualified_name = GetQualifiedTypeName(class_info);
+    
+    // 开始类绑定 - 将类名放在同一行
+    builder.AddIndentedLine("auto " + lua_class_name + "_type = " + namespace_var + ".new_usertype<" + qualified_name + ">(\"" + lua_class_name + "\",");
+    builder.IncreaseIndent();
+    
+    // 分类成员，并去除重复（排除构造函数）
+    std::vector<ExportInfo> methods, static_methods, properties, operators;
+    std::set<std::string> seen_signatures;
+    
+    for (const auto& member : members) {
+        // 跳过构造函数 - 抽象类不能实例化
+        if (member.export_type == "constructor") {
+            continue;
+        }
+        
+        // 创建唯一签名来检测重复
+        std::string signature = member.export_type + "::" + member.name + "::" + 
+                               member.qualified_name + "::" + member.parent_class;
+        
+        if (seen_signatures.find(signature) != seen_signatures.end()) {
+            continue; // 跳过重复项
+        }
+        seen_signatures.insert(signature);
+        
+        if (member.export_type == "method") {
+            methods.push_back(member);
+        } else if (member.export_type == "static_method") {
+            static_methods.push_back(member);
+        } else if (member.export_type == "property") {
+            properties.push_back(member);
+        } else if (member.export_type == "operator") {
+            operators.push_back(member);
+        }
+    }
+    
+    // 收集所有绑定项
+    std::vector<std::string> all_bindings;
+    
+    // 抽象类没有构造函数，但需要一个空的构造函数参数来满足Sol2语法
+    all_bindings.push_back("sol::constructors<>()");
+    
+    // 生成继承关系 - 暂时跳过，避免引用未导出的基类Entity
+    // TODO: 添加基类导出状态检查逻辑
+    /*
+    if (!class_info.base_classes.empty()) {
+        all_bindings.push_back("sol::base_classes");
+        
+        std::string bases_spec = "sol::bases<";
+        for (size_t i = 0; i < class_info.base_classes.size(); ++i) {
+            if (i > 0) bases_spec += ", ";
+            std::string base_class = class_info.base_classes[i];
+            if (base_class.find("::") == std::string::npos) {
+                std::string qualified_name = GetQualifiedTypeName(class_info);
+                size_t last_scope = qualified_name.find_last_of("::");
+                if (last_scope != std::string::npos) {
+                    std::string base_namespace = qualified_name.substr(0, last_scope - 1);
+                    base_class = base_namespace + "::" + base_class;
+                }
+            }
+            bases_spec += base_class;
+        }
+        bases_spec += ">()";
+        all_bindings.push_back(bases_spec);
+    }
+    */
+    
+    // 将所有绑定合并为一行或多行
+    if (all_bindings.empty()) {
+        builder.AddIndentedLine("sol::constructors<>()");
+    } else {
+        for (size_t i = 0; i < all_bindings.size(); ++i) {
+            if (i == all_bindings.size() - 1) {
+                builder.AddIndentedLine(all_bindings[i]);
+            } else {
+                builder.AddIndentedLine(all_bindings[i] + ",");
+            }
+        }
+    }
+    
+    builder.DecreaseIndent();
+    builder.AddIndentedLine(");");
+    builder.AddEmptyLine();
+    
+    // 单独添加方法绑定
+    for (const auto& method : methods) {
+        std::string lua_name = method.lua_name.empty() ? method.name : method.lua_name;
+        std::string qualified_method = GetQualifiedTypeName(method);
+        builder.AddIndentedLine(lua_class_name + "_type[\"" + lua_name + "\"] = &" + qualified_method + ";");
+    }
+    
+    // 添加静态方法绑定
+    for (const auto& static_method : static_methods) {
+        std::string lua_name = static_method.lua_name.empty() ? static_method.name : static_method.lua_name;
+        std::string qualified_method = GetQualifiedTypeName(static_method);
+        builder.AddIndentedLine(lua_class_name + "_type[\"" + lua_name + "\"] = &" + qualified_method + ";");
+    }
+    
+    // 添加属性绑定
+    for (const auto& prop : properties) {
+        std::string lua_name = prop.lua_name.empty() ? prop.name : prop.lua_name;
+        std::string qualified_prop = GetQualifiedTypeName(prop);
+        
+        if (prop.property_access == "readonly") {
+            builder.AddIndentedLine(lua_class_name + "_type[\"" + lua_name + "\"] = sol::readonly_property(&" + qualified_prop + ");");
+        } else if (prop.property_access == "readwrite") {
+            // 查找setter方法
+            std::string setter_name;
+            if (prop.attributes.count("setter")) {
+                setter_name = prop.attributes.at("setter");
+            } else {
+                std::string getter_name = prop.name;
+                if (getter_name.find("get") == 0 && getter_name.length() > 3) {
+                    setter_name = "set" + getter_name.substr(3);
+                } else {
+                    setter_name = "set" + getter_name;
+                }
+            }
+            
+            std::string setter_qualified = prop.owner_class + "::" + setter_name;
+            builder.AddIndentedLine(lua_class_name + "_type[\"" + lua_name + "\"] = sol::property(&" + qualified_prop + ", &" + setter_qualified + ");");
+        } else {
+            builder.AddIndentedLine(lua_class_name + "_type[\"" + lua_name + "\"] = sol::property(&" + qualified_prop + ");");
+        }
+    }
+    
+    // 添加操作符绑定
+    for (const auto& op : operators) {
+        std::string op_binding = GenerateOperatorBinding(op);
+        if (!op_binding.empty()) {
+            builder.AddIndentedLine(lua_class_name + "_type[" + op_binding + ";");
+        }
+    }
+    
+    return builder.Build();
+}
+
+size_t DirectBindingGenerator::CalculateBindingParameterCount(const std::vector<ExportInfo>& members,
+                                                             const ExportInfo& class_info) {
+    size_t count = 0;
+    
+    // 计算基础参数：构造函数（1个）
+    count += 1;
+    
+    // 计算继承关系参数：暂时跳过，避免引用未导出的基类Entity
+    // TODO: 添加基类导出状态检查逻辑
+    /*
+    if (!class_info.base_classes.empty()) {
+        count += 2;
+    }
+    */
+    
+    // 计算成员参数：每个成员需要2个参数（名称 + 指针）
+    for (const auto& member : members) {
+        if (member.export_type == "constructor") {
+            // 构造函数已经包含在基础参数中
+            continue;
+        } else if (member.export_type == "method" || 
+                   member.export_type == "static_method" ||
+                   member.export_type == "property") {
+            count += 2; // 名称 + 指针/property wrapper
+        } else if (member.export_type == "operator") {
+            count += 2; // meta_function + 指针
+        }
+    }
+    
+    return count;
+}
+
+std::string DirectBindingGenerator::GenerateBatchedClassBinding(const ExportInfo& class_info,
+                                                               const std::vector<ExportInfo>& members) {
+    CodeBuilder builder(options_.indent_size);
+    
+    std::string namespace_var = namespace_manager_.GetNamespaceVariable(
+        namespace_manager_.ResolveNamespace(class_info));
+    
+    std::string lua_class_name = class_info.lua_name.empty() ? class_info.name : class_info.lua_name;
+    std::string qualified_name = GetQualifiedTypeName(class_info);
+    
+    // 分类成员，并去除重复
+    std::vector<ExportInfo> constructors, methods, static_methods, properties, operators;
+    std::set<std::string> seen_signatures;
+    
+    for (const auto& member : members) {
+        // 创建唯一签名来检测重复
+        std::string signature = member.export_type + "::" + member.name + "::" + 
+                               member.qualified_name + "::" + member.parent_class;
+        
+        if (seen_signatures.find(signature) != seen_signatures.end()) {
+            continue; // 跳过重复项
+        }
+        seen_signatures.insert(signature);
+        
+        if (member.export_type == "constructor") {
+            constructors.push_back(member);
+        } else if (member.export_type == "method") {
+            methods.push_back(member);
+        } else if (member.export_type == "static_method") {
+            static_methods.push_back(member);
+        } else if (member.export_type == "property") {
+            properties.push_back(member);
+        } else if (member.export_type == "operator") {
+            operators.push_back(member);
+        }
+    }
+    
+    // 第一步：创建基础类型（构造函数 + 继承关系）
+    builder.AddIndentedLine("auto " + lua_class_name + "_type = " + namespace_var + ".new_usertype<" + qualified_name + ">(\"" + lua_class_name + "\",");
+    builder.IncreaseIndent();
+    
+    std::vector<std::string> basic_bindings;
+    
+    // 生成构造函数绑定
+    if (!constructors.empty()) {
+        std::string ctor_binding = GenerateConstructorBindings(constructors);
+        basic_bindings.push_back(ctor_binding);
+    } else {
+        basic_bindings.push_back("sol::constructors<>()");
+    }
+    
+    // 生成继承关系 - 暂时跳过，避免引用未导出的基类Entity
+    // TODO: 添加基类导出状态检查逻辑
+    /*
+    if (!class_info.base_classes.empty()) {
+        basic_bindings.push_back("sol::base_classes");
+        
+        std::string bases_spec = "sol::bases<";
+        for (size_t i = 0; i < class_info.base_classes.size(); ++i) {
+            if (i > 0) bases_spec += ", ";
+            // Use fully qualified base class names
+            std::string base_class = class_info.base_classes[i];
+            if (base_class.find("::") == std::string::npos) {
+                // Base class without namespace - need to fully qualify it
+                std::string qualified_name_local = GetQualifiedTypeName(class_info);
+                size_t last_scope = qualified_name_local.find_last_of("::");
+                if (last_scope != std::string::npos) {
+                    // Extract the namespace part
+                    std::string base_namespace = qualified_name_local.substr(0, last_scope - 1);
+                    base_class = base_namespace + "::" + base_class;
+                }
+            }
+            bases_spec += base_class;
+        }
+        bases_spec += ">()";
+        basic_bindings.push_back(bases_spec);
+    }
+    */
+    
+    // 输出基础绑定
+    for (size_t i = 0; i < basic_bindings.size(); ++i) {
+        if (i == basic_bindings.size() - 1) {
+            builder.AddIndentedLine(basic_bindings[i]);
+        } else {
+            builder.AddIndentedLine(basic_bindings[i] + ",");
+        }
+    }
+    
+    builder.DecreaseIndent();
+    builder.AddIndentedLine(");");
+    builder.AddEmptyLine();
+    
+    // 第二步：分批添加成员方法
+    for (const auto& method : methods) {
+        std::string method_name = method.lua_name.empty() ? method.name : method.lua_name;
+        
+        // 跳过不能绑定的操作符
+        if (method_name == "operator=" || method_name == "operator->" || method_name == "operator&") {
+            continue;
+        }
+        
+        std::string qualified_method_name = GetQualifiedTypeName(method);
+        builder.AddIndentedLine(lua_class_name + "_type[\"" + method_name + "\"] = &" + qualified_method_name + ";");
+    }
+    
+    // 添加静态方法
+    for (const auto& static_method : static_methods) {
+        std::string static_name = static_method.lua_name.empty() ? static_method.name : static_method.lua_name;
+        std::string qualified_static_name = GetQualifiedTypeName(static_method);
+        builder.AddIndentedLine(lua_class_name + "_type[\"" + static_name + "\"] = &" + qualified_static_name + ";");
+    }
+    
+    // 添加属性
+    for (const auto& prop : properties) {
+        std::string prop_name = prop.lua_name.empty() ? prop.name : prop.lua_name;
+        std::string qualified_prop_name = GetQualifiedTypeName(prop);
+        
+        if (prop.property_access == "readonly") {
+            builder.AddIndentedLine(lua_class_name + "_type[\"" + prop_name + "\"] = sol::readonly_property(&" + qualified_prop_name + ");");
+        } else {
+            builder.AddIndentedLine(lua_class_name + "_type[\"" + prop_name + "\"] = sol::property(&" + qualified_prop_name + ");");
+        }
+    }
+    
+    // 添加操作符重载（使用sol::meta_function）
+    for (const auto& op : operators) {
+        std::string op_binding = GenerateOperatorBinding(op);
+        if (!op_binding.empty()) {
+            // 解析操作符绑定（格式：meta_function, &qualified_name）
+            size_t comma_pos = op_binding.find(",");
+            if (comma_pos != std::string::npos) {
+                std::string meta_func = op_binding.substr(0, comma_pos);
+                std::string op_ptr = op_binding.substr(comma_pos + 2); // +2 跳过", "
+                builder.AddIndentedLine(lua_class_name + "_type[" + meta_func + "] = " + op_ptr + ";");
+            }
+        }
+    }
     
     return builder.Build();
 }
@@ -434,13 +941,25 @@ std::string DirectBindingGenerator::GenerateEnumBinding(const ExportInfo& enum_i
 std::string DirectBindingGenerator::GenerateSTLBinding(const ExportInfo& stl_info) {
     auto type_info = AnalyzeSTLType(stl_info.type_name);
     
+    // 使用容器的alias作为Lua类型名称，如果有的话
+    if (stl_info.attributes.count("alias")) {
+        type_info.lua_type_name = stl_info.attributes.at("alias");
+    } else {
+        // 生成基于类型的唯一名称
+        type_info.lua_type_name = stl_info.name;
+    }
+    
     switch (type_info.container_type) {
         case STLTypeInfo::VECTOR:
             return GenerateVectorBinding(type_info);
         case STLTypeInfo::MAP:
             return GenerateMapBinding(type_info);
+        case STLTypeInfo::UNORDERED_MAP:
+            return GenerateUnorderedMapBinding(type_info);
         case STLTypeInfo::SET:
             return GenerateSetBinding(type_info);
+        case STLTypeInfo::LIST:
+            return GenerateListBinding(type_info);
         default:
             return "// Unsupported STL container: " + stl_info.type_name;
     }
@@ -450,6 +969,132 @@ std::string DirectBindingGenerator::GenerateCallbackBinding(const ExportInfo& ca
     // 回调函数通常作为类成员变量处理
     std::string lua_name = callback_info.lua_name.empty() ? callback_info.name : callback_info.lua_name;
     return "\"" + lua_name + "\", &" + GetQualifiedTypeName(callback_info);
+}
+
+std::string DirectBindingGenerator::GenerateStaticClassBinding(const ExportInfo& class_info,
+                                                              const std::vector<ExportInfo>& members) {
+    CodeBuilder builder(options_.indent_size);
+    
+    std::string namespace_var = namespace_manager_.GetNamespaceVariable(
+        namespace_manager_.ResolveNamespace(class_info));
+    
+    std::string lua_class_name = class_info.lua_name.empty() ? class_info.name : class_info.lua_name;
+    
+    // 为静态类创建一个table，而不是usertype
+    builder.AddIndentedLine("auto " + lua_class_name + "_table = " + namespace_var + "[\"" + lua_class_name + "\"].get_or_create<sol::table>();");
+    
+    // 只绑定静态方法
+    for (const auto& member : members) {
+        if (member.export_type == "static_method") {
+            std::string method_name = member.lua_name.empty() ? member.name : member.lua_name;
+            std::string qualified_name = GetQualifiedTypeName(member);
+            builder.AddIndentedLine(lua_class_name + "_table[\"" + method_name + "\"] = &" + qualified_name + ";");
+        }
+    }
+    
+    return builder.Build();
+}
+
+std::string DirectBindingGenerator::GenerateSingletonBinding(const ExportInfo& class_info,
+                                                            const std::vector<ExportInfo>& members) {
+    CodeBuilder builder(options_.indent_size);
+    
+    std::string namespace_var = namespace_manager_.GetNamespaceVariable(
+        namespace_manager_.ResolveNamespace(class_info));
+    
+    std::string lua_class_name = class_info.lua_name.empty() ? class_info.name : class_info.lua_name;
+    std::string qualified_name = GetQualifiedTypeName(class_info);
+    
+    // 为单例类创建usertype，但添加getInstance方法
+    builder.AddIndentedLine(namespace_var + ".new_usertype<" + qualified_name + ">(\"" + lua_class_name + "\",");
+    builder.IncreaseIndent();
+    
+    std::vector<std::string> all_bindings;
+    
+    // 添加getInstance静态方法
+    all_bindings.push_back("\"getInstance\", &" + qualified_name + "::getInstance");
+    
+    // 添加其他方法
+    for (const auto& member : members) {
+        if (member.export_type == "method") {
+            std::string method_name = member.lua_name.empty() ? member.name : member.lua_name;
+            std::string qualified_method_name = GetQualifiedTypeName(member);
+            all_bindings.push_back("\"" + method_name + "\", &" + qualified_method_name);
+        }
+    }
+    
+    // 输出所有绑定项
+    for (size_t i = 0; i < all_bindings.size(); ++i) {
+        if (i == all_bindings.size() - 1) {
+            builder.AddIndentedLine(all_bindings[i]);
+        } else {
+            builder.AddIndentedLine(all_bindings[i] + ",");
+        }
+    }
+    
+    builder.DecreaseIndent();
+    builder.AddIndentedLine(");");
+    
+    return builder.Build();
+}
+
+std::string DirectBindingGenerator::GenerateConstantBinding(const ExportInfo& constant_info) {
+    // 过滤掉无效的常量
+    if (constant_info.name.find("__lua_module_marker_") == 0) {
+        return "// Skipped module marker constant: " + constant_info.name;
+    }
+    
+    std::string namespace_var = namespace_manager_.GetNamespaceVariable(
+        namespace_manager_.ResolveNamespace(constant_info));
+    
+    std::string lua_name = constant_info.lua_name.empty() ? constant_info.name : constant_info.lua_name;
+    std::string qualified_name = GetQualifiedTypeName(constant_info);
+    
+    // 为常量生成绑定，使用正确的命名空间
+    if (namespace_var == "lua") {
+        return "lua[\"" + lua_name + "\"] = " + qualified_name + ";";
+    } else {
+        return namespace_var + "[\"" + lua_name + "\"] = " + qualified_name + ";";
+    }
+}
+
+std::string DirectBindingGenerator::GenerateOperatorBinding(const ExportInfo& operator_info) {
+    std::string op_name = operator_info.name;
+    std::string qualified_name = GetQualifiedTypeName(operator_info);
+    
+    // 映射操作符名称到Sol2的meta_function
+    std::string sol_meta_func;
+    if (op_name == "operator+") {
+        sol_meta_func = "sol::meta_function::addition";
+    } else if (op_name == "operator-") {
+        sol_meta_func = "sol::meta_function::subtraction";
+    } else if (op_name == "operator*") {
+        sol_meta_func = "sol::meta_function::multiplication";
+    } else if (op_name == "operator/") {
+        sol_meta_func = "sol::meta_function::division";
+    } else if (op_name == "operator==") {
+        sol_meta_func = "sol::meta_function::equal_to";
+    } else if (op_name == "operator!=") {
+        // Sol2 doesn't have not_equal meta function, skip it
+        return "";
+    } else if (op_name == "operator<") {
+        sol_meta_func = "sol::meta_function::less_than";
+    } else if (op_name == "operator<=") {
+        sol_meta_func = "sol::meta_function::less_than_or_equal_to";
+    } else if (op_name == "operator>") {
+        sol_meta_func = "sol::meta_function::greater_than";
+    } else if (op_name == "operator>=") {
+        sol_meta_func = "sol::meta_function::greater_than_or_equal_to";
+    } else if (op_name == "operator[]") {
+        sol_meta_func = "sol::meta_function::index";
+    } else if (op_name == "operator()") {
+        sol_meta_func = "sol::meta_function::call";
+    } else {
+        // 不支持的操作符，返回空字符串
+        return "";
+    }
+    
+    return sol_meta_func + ", &" + qualified_name;
 }
 
 // 私有辅助方法实现
@@ -549,19 +1194,50 @@ std::string DirectBindingGenerator::GenerateConstructorBindings(const std::vecto
     }
     
     std::string result = "sol::constructors<";
-    for (size_t i = 0; i < constructors.size(); ++i) {
-        if (i > 0) result += ", ";
+    std::set<std::string> unique_signatures; // 去重构造函数签名
+    bool first = true;
+    
+    for (const auto& ctor : constructors) {
+        // 构建构造函数参数签名 - Sol2 需要完全限定的类名加参数类型
+        std::string signature;
         
-        // 构建构造函数签名
-        const auto& ctor = constructors[i];
-        std::string signature = ctor.qualified_name + "(";
+        // 获取完全限定的类名
+        std::string qualified_class_name = ctor.namespace_name.empty() ? 
+            ctor.parent_class : 
+            ctor.namespace_name + "::" + ctor.parent_class;
         
-        // TODO: 从 AST 获取参数类型
-        // 这里需要解析 ctor.parameters
-        signature += ")";
+        if (ctor.parameter_types.empty()) {
+            // 默认构造函数
+            signature = qualified_class_name + "()";
+        } else {
+            // 有参数的构造函数
+            signature = qualified_class_name + "(";
+            for (size_t j = 0; j < ctor.parameter_types.size(); ++j) {
+                if (j > 0) signature += ", ";
+                // 清理参数类型，确保格式正确
+                std::string param_type = ctor.parameter_types[j];
+                // 移除多余的空格
+                param_type = std::regex_replace(param_type, std::regex("\\s+"), " ");
+                // 移除前后空格
+                param_type = std::regex_replace(param_type, std::regex("^\\s+|\\s+$"), "");
+                signature += param_type;
+            }
+            signature += ")";
+        }
         
+        // 检查是否已存在相同签名
+        if (unique_signatures.find(signature) != unique_signatures.end()) {
+            continue;
+        }
+        unique_signatures.insert(signature);
+        
+        if (!first) {
+            result += ", ";
+        }
         result += signature;
+        first = false;
     }
+    
     result += ">()";
     
     return result;
@@ -640,8 +1316,25 @@ std::string DirectBindingGenerator::GeneratePropertyBindings(const std::vector<E
         
         if (prop.property_access == "readonly") {
             result += "\"" + lua_name + "\", sol::readonly_property(&" + GetQualifiedTypeName(prop) + ")";
+        } else if (prop.property_access == "readwrite") {
+            // 查找setter方法
+            std::string setter_name;
+            if (prop.attributes.count("setter")) {
+                setter_name = prop.attributes.at("setter");
+            } else {
+                // 默认setter名称：将getXxx替换为setXxx
+                std::string getter_name = prop.name;
+                if (getter_name.find("get") == 0 && getter_name.length() > 3) {
+                    setter_name = "set" + getter_name.substr(3);
+                } else {
+                    setter_name = "set" + getter_name;
+                }
+            }
+            
+            std::string setter_qualified = prop.owner_class + "::" + setter_name;
+            result += "\"" + lua_name + "\", sol::property(&" + GetQualifiedTypeName(prop) + ", &" + setter_qualified + ")";
         } else {
-            // TODO: 处理读写属性，需要 getter 和 setter
+            // 默认为只读属性
             result += "\"" + lua_name + "\", sol::property(&" + GetQualifiedTypeName(prop) + ")";
         }
     }
@@ -667,8 +1360,25 @@ std::vector<std::string> DirectBindingGenerator::SplitPropertyBindings(const std
         std::string binding;
         if (prop.property_access == "readonly") {
             binding = "\"" + lua_name + "\", sol::readonly_property(&" + qualified_name + ")";
+        } else if (prop.property_access == "readwrite") {
+            // 查找setter方法
+            std::string setter_name;
+            if (prop.attributes.count("setter")) {
+                setter_name = prop.attributes.at("setter");
+            } else {
+                // 默认setter名称：将getXxx替换为setXxx
+                std::string getter_name = prop.name;
+                if (getter_name.find("get") == 0 && getter_name.length() > 3) {
+                    setter_name = "set" + getter_name.substr(3);
+                } else {
+                    setter_name = "set" + getter_name;
+                }
+            }
+            
+            std::string setter_qualified = prop.owner_class + "::" + setter_name;
+            binding = "\"" + lua_name + "\", sol::property(&" + qualified_name + ", &" + setter_qualified + ")";
         } else {
-            // TODO: 处理读写属性，需要 getter 和 setter
+            // 默认为只读属性
             binding = "\"" + lua_name + "\", sol::property(&" + qualified_name + ")";
         }
         
@@ -744,6 +1454,7 @@ std::string DirectBindingGenerator::GenerateInheritanceCode(const ExportInfo& cl
         return "";
     }
     
+    // Return as one binding pair to satisfy Sol2's even argument requirement
     std::string result = "sol::base_classes, sol::bases<";
     for (size_t i = 0; i < class_info.base_classes.size(); ++i) {
         if (i > 0) result += ", ";
@@ -778,9 +1489,15 @@ DirectBindingGenerator::STLTypeInfo DirectBindingGenerator::AnalyzeSTLType(const
     } else if (type_name.find("std::map") == 0) {
         info.container_type = STLTypeInfo::MAP;
         info.lua_type_name = "map";
+    } else if (type_name.find("std::unordered_map") == 0) {
+        info.container_type = STLTypeInfo::UNORDERED_MAP;
+        info.lua_type_name = "unordered_map";
     } else if (type_name.find("std::set") == 0) {
         info.container_type = STLTypeInfo::SET;
         info.lua_type_name = "set";
+    } else if (type_name.find("std::list") == 0) {
+        info.container_type = STLTypeInfo::LIST;
+        info.lua_type_name = "list";
     }
     
     // TODO: 解析模板参数
@@ -794,12 +1511,57 @@ std::string DirectBindingGenerator::GenerateVectorBinding(const STLTypeInfo& inf
     builder.AddIndentedLine("lua.new_usertype<" + info.full_type_name + ">(\"" + info.lua_type_name + "\"");
     builder.IncreaseIndent();
     builder.AddIndentedLine(", sol::constructors<" + info.full_type_name + "()>()");
-    builder.AddIndentedLine(", \"size\", &" + info.full_type_name + "::size");
-    builder.AddIndentedLine(", \"empty\", &" + info.full_type_name + "::empty");
-    builder.AddIndentedLine(", \"clear\", &" + info.full_type_name + "::clear");
-    builder.AddIndentedLine(", \"push_back\", &" + info.full_type_name + "::push_back");
-    builder.AddIndentedLine(", \"pop_back\", &" + info.full_type_name + "::pop_back");
-    // TODO: 添加更多 vector 方法
+    builder.AddIndentedLine(", \"size\", [](const " + info.full_type_name + "& vec) { return vec.size(); }");
+    builder.AddIndentedLine(", \"empty\", [](const " + info.full_type_name + "& vec) { return vec.empty(); }");
+    builder.AddIndentedLine(", \"clear\", []("+info.full_type_name + "& vec) { vec.clear(); }");
+    
+    // Extract element type for push_back
+    std::string element_type = info.full_type_name;
+    size_t start = element_type.find('<');
+    size_t end = element_type.rfind('>');
+    if (start != std::string::npos && end != std::string::npos) {
+        element_type = element_type.substr(start + 1, end - start - 1);
+    }
+    
+    builder.AddIndentedLine(", \"push_back\", []("+info.full_type_name + "& vec, const " + element_type + "& item) { vec.push_back(item); }");
+    builder.AddIndentedLine(", \"pop_back\", []("+info.full_type_name + "& vec) { if(!vec.empty()) vec.pop_back(); }");
+    
+    // 添加索引访问方法
+    builder.AddIndentedLine(", \"at\", [](const "+info.full_type_name + "& vec, size_t index) -> const " + element_type + "& { return vec.at(index); }");
+    builder.AddIndentedLine(", \"get\", [](const "+info.full_type_name + "& vec, size_t index) -> sol::optional<" + element_type + "> {");
+    builder.AddIndentedLine("        if (index < vec.size()) return vec[index];");
+    builder.AddIndentedLine("        return sol::nullopt;");
+    builder.AddIndentedLine("    }");
+    builder.AddIndentedLine(", \"set\", []("+info.full_type_name + "& vec, size_t index, const " + element_type + "& value) {");
+    builder.AddIndentedLine("        if (index < vec.size()) vec[index] = value;");
+    builder.AddIndentedLine("    }");
+    
+    // 添加首尾访问方法
+    builder.AddIndentedLine(", \"front\", [](const "+info.full_type_name + "& vec) -> const " + element_type + "& { return vec.front(); }");
+    builder.AddIndentedLine(", \"back\", [](const "+info.full_type_name + "& vec) -> const " + element_type + "& { return vec.back(); }");
+    
+    // 添加容器操作方法
+    builder.AddIndentedLine(", \"resize\", []("+info.full_type_name + "& vec, size_t new_size) { vec.resize(new_size); }");
+    builder.AddIndentedLine(", \"reserve\", []("+info.full_type_name + "& vec, size_t capacity) { vec.reserve(capacity); }");
+    builder.AddIndentedLine(", \"capacity\", [](const "+info.full_type_name + "& vec) { return vec.capacity(); }");
+    
+    // 添加查找和操作方法
+    builder.AddIndentedLine(", \"insert\", []("+info.full_type_name + "& vec, size_t index, const " + element_type + "& item) {");
+    builder.AddIndentedLine("        if (index <= vec.size()) vec.insert(vec.begin() + index, item);");
+    builder.AddIndentedLine("    }");
+    builder.AddIndentedLine(", \"erase\", []("+info.full_type_name + "& vec, size_t index) {");
+    builder.AddIndentedLine("        if (index < vec.size()) vec.erase(vec.begin() + index);");
+    builder.AddIndentedLine("    }");
+    
+    // 添加转换为Lua表的方法
+    builder.AddIndentedLine(", \"to_table\", [](const "+info.full_type_name + "& vec, sol::this_state s) {");
+    builder.AddIndentedLine("        sol::state_view lua(s);");
+    builder.AddIndentedLine("        sol::table result = lua.create_table();");
+    builder.AddIndentedLine("        for (size_t i = 0; i < vec.size(); ++i) {");
+    builder.AddIndentedLine("            result[i + 1] = vec[i];");  // Lua is 1-indexed
+    builder.AddIndentedLine("        }");
+    builder.AddIndentedLine("        return result;");
+    builder.AddIndentedLine("    }");
     builder.DecreaseIndent();
     builder.AddIndentedLine(");");
     
@@ -807,13 +1569,210 @@ std::string DirectBindingGenerator::GenerateVectorBinding(const STLTypeInfo& inf
 }
 
 std::string DirectBindingGenerator::GenerateMapBinding(const STLTypeInfo& info) {
-    // TODO: 实现 map 绑定
-    return "// TODO: Map binding for " + info.full_type_name;
+    CodeBuilder builder;
+    
+    builder.AddIndentedLine("lua.new_usertype<" + info.full_type_name + ">(\"" + info.lua_type_name + "\"");
+    builder.IncreaseIndent();
+    builder.AddIndentedLine(", sol::constructors<" + info.full_type_name + "()>()");
+    builder.AddIndentedLine(", \"size\", [](const " + info.full_type_name + "& map) { return map.size(); }");
+    builder.AddIndentedLine(", \"empty\", [](const " + info.full_type_name + "& map) { return map.empty(); }");
+    builder.AddIndentedLine(", \"clear\", []("+info.full_type_name + "& map) { map.clear(); }");
+    
+    // 提取键值类型
+    std::string key_type, value_type;
+    size_t start = info.full_type_name.find('<');
+    size_t end = info.full_type_name.rfind('>');
+    if (start != std::string::npos && end != std::string::npos) {
+        std::string types_str = info.full_type_name.substr(start + 1, end - start - 1);
+        size_t comma_pos = types_str.find(',');
+        if (comma_pos != std::string::npos) {
+            key_type = types_str.substr(0, comma_pos);
+            value_type = types_str.substr(comma_pos + 1);
+            
+            // 清理空格
+            key_type.erase(0, key_type.find_first_not_of(" \t"));
+            key_type.erase(key_type.find_last_not_of(" \t") + 1);
+            value_type.erase(0, value_type.find_first_not_of(" \t"));
+            value_type.erase(value_type.find_last_not_of(" \t") + 1);
+        }
+    }
+    
+    if (!key_type.empty() && !value_type.empty()) {
+        // Map 特有方法
+        builder.AddIndentedLine(", \"set\", []("+info.full_type_name + "& map, const " + key_type + "& key, const " + value_type + "& value) { map[key] = value; }");
+        builder.AddIndentedLine(", \"get\", [](const "+info.full_type_name + "& map, const " + key_type + "& key) -> sol::optional<" + value_type + "> {");
+        builder.IncreaseIndent();
+        builder.AddIndentedLine("auto it = map.find(key);");
+        builder.AddIndentedLine("if (it != map.end()) return it->second;");
+        builder.AddIndentedLine("return sol::nullopt;");
+        builder.DecreaseIndent();
+        builder.AddIndentedLine("}");
+        builder.AddIndentedLine(", \"has\", [](const "+info.full_type_name + "& map, const " + key_type + "& key) { return map.find(key) != map.end(); }");
+        builder.AddIndentedLine(", \"erase\", []("+info.full_type_name + "& map, const " + key_type + "& key) { return map.erase(key) > 0; }");
+        builder.AddIndentedLine(", \"keys\", [](const "+info.full_type_name + "& map) {");
+        builder.IncreaseIndent();
+        builder.AddIndentedLine("std::vector<" + key_type + "> result;");
+        builder.AddIndentedLine("for (const auto& pair : map) result.push_back(pair.first);");
+        builder.AddIndentedLine("return result;");
+        builder.DecreaseIndent();
+        builder.AddIndentedLine("}");
+        builder.AddIndentedLine(", \"values\", [](const "+info.full_type_name + "& map) {");
+        builder.IncreaseIndent();
+        builder.AddIndentedLine("std::vector<" + value_type + "> result;");
+        builder.AddIndentedLine("for (const auto& pair : map) result.push_back(pair.second);");
+        builder.AddIndentedLine("return result;");
+        builder.DecreaseIndent();
+        builder.AddIndentedLine("}");
+    }
+    
+    builder.DecreaseIndent();
+    builder.AddIndentedLine(");");
+    
+    return builder.Build();
 }
 
 std::string DirectBindingGenerator::GenerateSetBinding(const STLTypeInfo& info) {
-    // TODO: 实现 set 绑定
-    return "// TODO: Set binding for " + info.full_type_name;
+    CodeBuilder builder;
+    
+    builder.AddIndentedLine("lua.new_usertype<" + info.full_type_name + ">(\"" + info.lua_type_name + "\"");
+    builder.IncreaseIndent();
+    builder.AddIndentedLine(", sol::constructors<" + info.full_type_name + "()>()");
+    builder.AddIndentedLine(", \"size\", [](const " + info.full_type_name + "& set) { return set.size(); }");
+    builder.AddIndentedLine(", \"empty\", [](const " + info.full_type_name + "& set) { return set.empty(); }");
+    builder.AddIndentedLine(", \"clear\", []("+info.full_type_name + "& set) { set.clear(); }");
+    
+    // 提取元素类型
+    std::string element_type = info.full_type_name;
+    size_t start = element_type.find('<');
+    size_t end = element_type.rfind('>');
+    if (start != std::string::npos && end != std::string::npos) {
+        element_type = element_type.substr(start + 1, end - start - 1);
+    }
+    
+    if (!element_type.empty()) {
+        // Set 特有方法
+        builder.AddIndentedLine(", \"insert\", []("+info.full_type_name + "& set, const " + element_type + "& item) { return set.insert(item).second; }");
+        builder.AddIndentedLine(", \"erase\", []("+info.full_type_name + "& set, const " + element_type + "& item) { return set.erase(item) > 0; }");
+        builder.AddIndentedLine(", \"has\", [](const "+info.full_type_name + "& set, const " + element_type + "& item) { return set.find(item) != set.end(); }");
+        builder.AddIndentedLine(", \"to_vector\", [](const "+info.full_type_name + "& set) {");
+        builder.IncreaseIndent();
+        builder.AddIndentedLine("std::vector<" + element_type + "> result(set.begin(), set.end());");
+        builder.AddIndentedLine("return result;");
+        builder.DecreaseIndent();
+        builder.AddIndentedLine("}");
+    }
+    
+    builder.DecreaseIndent();
+    builder.AddIndentedLine(");");
+    
+    return builder.Build();
+}
+
+std::string DirectBindingGenerator::GenerateUnorderedMapBinding(const STLTypeInfo& info) {
+    CodeBuilder builder;
+    
+    builder.AddIndentedLine("lua.new_usertype<" + info.full_type_name + ">(\"" + info.lua_type_name + "\"");
+    builder.IncreaseIndent();
+    builder.AddIndentedLine(", sol::constructors<" + info.full_type_name + "()>()");
+    builder.AddIndentedLine(", \"size\", [](const " + info.full_type_name + "& map) { return map.size(); }");
+    builder.AddIndentedLine(", \"empty\", [](const " + info.full_type_name + "& map) { return map.empty(); }");
+    builder.AddIndentedLine(", \"clear\", []("+info.full_type_name + "& map) { map.clear(); }");
+    
+    // 提取键值类型
+    std::string key_type, value_type;
+    size_t start = info.full_type_name.find('<');
+    size_t end = info.full_type_name.rfind('>');
+    if (start != std::string::npos && end != std::string::npos) {
+        std::string types_str = info.full_type_name.substr(start + 1, end - start - 1);
+        size_t comma_pos = types_str.find(',');
+        if (comma_pos != std::string::npos) {
+            key_type = types_str.substr(0, comma_pos);
+            value_type = types_str.substr(comma_pos + 1);
+            
+            // 清理空格
+            key_type.erase(0, key_type.find_first_not_of(" \t"));
+            key_type.erase(key_type.find_last_not_of(" \t") + 1);
+            value_type.erase(0, value_type.find_first_not_of(" \t"));
+            value_type.erase(value_type.find_last_not_of(" \t") + 1);
+        }
+    }
+    
+    if (!key_type.empty() && !value_type.empty()) {
+        // UnorderedMap 方法（与Map相同）
+        builder.AddIndentedLine(", \"set\", []("+info.full_type_name + "& map, const " + key_type + "& key, const " + value_type + "& value) { map[key] = value; }");
+        builder.AddIndentedLine(", \"get\", [](const "+info.full_type_name + "& map, const " + key_type + "& key) -> sol::optional<" + value_type + "> {");
+        builder.IncreaseIndent();
+        builder.AddIndentedLine("auto it = map.find(key);");
+        builder.AddIndentedLine("if (it != map.end()) return it->second;");
+        builder.AddIndentedLine("return sol::nullopt;");
+        builder.DecreaseIndent();
+        builder.AddIndentedLine("}");
+        builder.AddIndentedLine(", \"has\", [](const "+info.full_type_name + "& map, const " + key_type + "& key) { return map.find(key) != map.end(); }");
+        builder.AddIndentedLine(", \"erase\", []("+info.full_type_name + "& map, const " + key_type + "& key) { return map.erase(key) > 0; }");
+        builder.AddIndentedLine(", \"keys\", [](const "+info.full_type_name + "& map) {");
+        builder.IncreaseIndent();
+        builder.AddIndentedLine("std::vector<" + key_type + "> result;");
+        builder.AddIndentedLine("for (const auto& pair : map) result.push_back(pair.first);");
+        builder.AddIndentedLine("return result;");
+        builder.DecreaseIndent();
+        builder.AddIndentedLine("}");
+        builder.AddIndentedLine(", \"values\", [](const "+info.full_type_name + "& map) {");
+        builder.IncreaseIndent();
+        builder.AddIndentedLine("std::vector<" + value_type + "> result;");
+        builder.AddIndentedLine("for (const auto& pair : map) result.push_back(pair.second);");
+        builder.AddIndentedLine("return result;");
+        builder.DecreaseIndent();
+        builder.AddIndentedLine("}");
+    }
+    
+    builder.DecreaseIndent();
+    builder.AddIndentedLine(");");
+    
+    return builder.Build();
+}
+
+std::string DirectBindingGenerator::GenerateListBinding(const STLTypeInfo& info) {
+    CodeBuilder builder;
+    
+    builder.AddIndentedLine("lua.new_usertype<" + info.full_type_name + ">(\"" + info.lua_type_name + "\"");
+    builder.IncreaseIndent();
+    builder.AddIndentedLine(", sol::constructors<" + info.full_type_name + "()>()");
+    builder.AddIndentedLine(", \"size\", [](const " + info.full_type_name + "& list) { return list.size(); }");
+    builder.AddIndentedLine(", \"empty\", [](const " + info.full_type_name + "& list) { return list.empty(); }");
+    builder.AddIndentedLine(", \"clear\", []("+info.full_type_name + "& list) { list.clear(); }");
+    
+    // 提取元素类型
+    std::string element_type = info.full_type_name;
+    size_t start = element_type.find('<');
+    size_t end = element_type.rfind('>');
+    if (start != std::string::npos && end != std::string::npos) {
+        element_type = element_type.substr(start + 1, end - start - 1);
+    }
+    
+    if (!element_type.empty()) {
+        // List 特有方法
+        builder.AddIndentedLine(", \"push_back\", []("+info.full_type_name + "& list, const " + element_type + "& item) { list.push_back(item); }");
+        builder.AddIndentedLine(", \"pop_back\", []("+info.full_type_name + "& list) { if(!list.empty()) list.pop_back(); }");
+        builder.AddIndentedLine(", \"push_front\", []("+info.full_type_name + "& list, const " + element_type + "& item) { list.push_front(item); }");
+        builder.AddIndentedLine(", \"pop_front\", []("+info.full_type_name + "& list) { if(!list.empty()) list.pop_front(); }");
+        builder.AddIndentedLine(", \"front\", [](const "+info.full_type_name + "& list) -> sol::optional<" + element_type + "> {");
+        builder.IncreaseIndent();
+        builder.AddIndentedLine("if(!list.empty()) return list.front();");
+        builder.AddIndentedLine("return sol::nullopt;");
+        builder.DecreaseIndent();
+        builder.AddIndentedLine("}");
+        builder.AddIndentedLine(", \"back\", [](const "+info.full_type_name + "& list) -> sol::optional<" + element_type + "> {");
+        builder.IncreaseIndent();
+        builder.AddIndentedLine("if(!list.empty()) return list.back();");
+        builder.AddIndentedLine("return sol::nullopt;");
+        builder.DecreaseIndent();
+        builder.AddIndentedLine("}");
+    }
+    
+    builder.DecreaseIndent();
+    builder.AddIndentedLine(");");
+    
+    return builder.Build();
 }
 
 std::string DirectBindingGenerator::GetLuaTypeName(const std::string& cpp_type) {

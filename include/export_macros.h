@@ -46,9 +46,9 @@
  */
 #define EXPORT_LUA_MODULE(ModuleName) \
     namespace { \
-        static constexpr const char* __lua_module_name = #ModuleName; \
+        static constexpr const char* EXPORT_LUA_CONCAT(__lua_module_name_, ModuleName) = #ModuleName; \
         __attribute__((annotate("lua_export_module:" #ModuleName))) \
-        static const int __lua_module_marker = 0; \
+        static const int EXPORT_LUA_CONCAT(__lua_module_marker_, ModuleName) = 0; \
     }
 
 /**

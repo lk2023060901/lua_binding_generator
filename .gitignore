@@ -1,7 +1,5 @@
 # 编译产物
-build/debug/
-build/release/
-build/*.log
+build/
 *.o
 *.a
 *.so

@@ -83,6 +83,8 @@ double calculateDistance(double x1, double y1, double x2, double y2);
 | `EXPORT_LUA_TEMPLATE` | Template class export | `class EXPORT_LUA_TEMPLATE(T) Container {}` |
 | `EXPORT_LUA_IGNORE` | Ignore export | `EXPORT_LUA_IGNORE() void internal();` |
 
+> **Note**: Abstract classes are usually handled through smart inheritance mechanism, automatically adding base class methods to derived class bindings
+
 ### Convenience Macros
 
 | Macro Name | Purpose | Equivalent To |
@@ -207,8 +209,11 @@ public:
     static const double E;
 };
 
-// 3. Abstract base class - support polymorphism
-class EXPORT_LUA_ABSTRACT_CLASS() Component {
+// 3. Abstract base class handling - Smart inheritance mechanism
+// Note: Abstract classes are usually not directly exported to Lua, but through
+// smart inheritance mechanism that automatically adds base class public methods
+// to derived class bindings
+class Component {  // No EXPORT_LUA_ABSTRACT_CLASS used
 public:
     Component() = default;
     virtual ~Component() = default;
@@ -218,12 +223,26 @@ public:
     virtual void update(double deltaTime) = 0;
     virtual void destroy() = 0;
     
-    // Regular virtual functions - normally exported
+    // Regular virtual functions - automatically inherited to derived class bindings
     virtual bool isActive() const;
     virtual void setActive(bool active);
 
 protected:
     bool active_ = true;
+};
+
+// Derived class - automatically includes base class public methods
+class EXPORT_LUA_CLASS() ConcreteComponent : public Component {
+public:
+    ConcreteComponent();
+    
+    // Implement pure virtual functions
+    void initialize() override;
+    void update(double deltaTime) override;
+    void destroy() override;
+    
+    // Base class isActive() and setActive() methods will be automatically
+    // added to this class's bindings
 };
 
 // 4. Operator overloading - automatically map to Lua metamethods
@@ -417,16 +436,36 @@ The project provides dedicated scripts to clean third-party library build artifa
 
 ### Namespace Inference
 
-Priority: Explicit specification > C++ namespace > EXPORT_LUA_MODULE > Global
+Priority: C++ namespace > EXPORT_LUA_MODULE > Global
 
 ```cpp
 EXPORT_LUA_MODULE(GameCore)
 
 namespace game {
     class EXPORT_LUA_CLASS() Player {};  // Inferred as game.Player
-    
-    class EXPORT_LUA_CLASS(namespace=combat) Weapon {};  // Explicitly specified as combat.Weapon
 }
+```
+
+### Smart Inheritance Method Extraction
+
+When a derived class is exported to Lua but its base class is not exported, the tool automatically adds the base class's public methods to the derived class bindings:
+
+```cpp
+// Base class not exported
+class Entity {
+public:
+    int getId() const;
+    void setId(int id);
+    std::string getName() const;
+    void setName(const std::string& name);
+};
+
+// Derived class exported - automatically includes base class methods
+class EXPORT_LUA_CLASS() Player : public Entity {
+public:
+    void levelUp();
+    // getId, setId, getName, setName will be automatically added to bindings
+};
 ```
 
 ### Property Inference
@@ -475,7 +514,7 @@ For the above `Player` class, the tool will generate Sol2 binding code like this
 
 ```cpp
 #include <sol/sol.hpp>
-#include "game_player.h"
+#include "complete_example.h"
 
 void register_GameCore_bindings(sol::state& lua) {
     // Create namespace
@@ -497,6 +536,10 @@ void register_GameCore_bindings(sol::state& lua) {
         "name", sol::property(&game::Player::getName, &game::Player::setName),
         "level", sol::readonly_property(&game::Player::getLevel),
         "health", sol::property(&game::Player::getHealth, &game::Player::setHealth),
+        
+        // Inherited methods from base class (automatically included)
+        "getId", &game::Player::getId,
+        "setId", &game::Player::setId,
         
         // Methods
         "attack", &game::Player::attack,

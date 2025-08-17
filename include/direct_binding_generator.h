@@ -89,6 +89,15 @@ public:
                                    const std::vector<ExportInfo>& members);
 
     /**
+     * @brief 生成抽象类绑定代码
+     * @param class_info 类信息
+     * @param members 类成员列表
+     * @return 生成的绑定代码
+     */
+    std::string GenerateAbstractClassBinding(const ExportInfo& class_info,
+                                           const std::vector<ExportInfo>& members);
+
+    /**
      * @brief 生成函数绑定代码
      * @param function_info 函数信息
      * @return 生成的绑定代码
@@ -117,6 +126,38 @@ public:
      * @return 生成的绑定代码
      */
     std::string GenerateCallbackBinding(const ExportInfo& callback_info);
+
+    /**
+     * @brief 生成静态类绑定代码
+     * @param class_info 静态类信息
+     * @param members 类成员列表
+     * @return 生成的绑定代码
+     */
+    std::string GenerateStaticClassBinding(const ExportInfo& class_info,
+                                         const std::vector<ExportInfo>& members);
+
+    /**
+     * @brief 生成单例绑定代码
+     * @param class_info 单例类信息
+     * @param members 类成员列表
+     * @return 生成的绑定代码
+     */
+    std::string GenerateSingletonBinding(const ExportInfo& class_info,
+                                       const std::vector<ExportInfo>& members);
+
+    /**
+     * @brief 生成常量绑定代码
+     * @param constant_info 常量信息
+     * @return 生成的绑定代码
+     */
+    std::string GenerateConstantBinding(const ExportInfo& constant_info);
+
+    /**
+     * @brief 生成单个操作符绑定代码
+     * @param operator_info 操作符信息
+     * @return 生成的绑定代码
+     */
+    std::string GenerateOperatorBinding(const ExportInfo& operator_info);
 
 private:
     GenerationOptions options_;                                 ///< 生成选项
@@ -244,10 +285,22 @@ private:
     std::string GenerateInheritanceCode(const ExportInfo& class_info);
 
     /**
+     * @brief 计算绑定参数数量
+     */
+    size_t CalculateBindingParameterCount(const std::vector<ExportInfo>& members,
+                                        const ExportInfo& class_info);
+
+    /**
+     * @brief 生成分批类绑定代码
+     */
+    std::string GenerateBatchedClassBinding(const ExportInfo& class_info,
+                                          const std::vector<ExportInfo>& members);
+
+    /**
      * @brief 分析 STL 容器类型
      */
     struct STLTypeInfo {
-        enum Type { VECTOR, MAP, SET, LIST, DEQUE, STACK, QUEUE, UNKNOWN };
+        enum Type { VECTOR, MAP, UNORDERED_MAP, SET, LIST, DEQUE, STACK, QUEUE, UNKNOWN };
         Type container_type;
         std::string full_type_name;
         std::string lua_type_name;
@@ -270,6 +323,16 @@ private:
      * @brief 生成 STL set 绑定
      */
     std::string GenerateSetBinding(const STLTypeInfo& info);
+
+    /**
+     * @brief 生成 STL unordered_map 绑定
+     */
+    std::string GenerateUnorderedMapBinding(const STLTypeInfo& info);
+
+    /**
+     * @brief 生成 STL list 绑定
+     */
+    std::string GenerateListBinding(const STLTypeInfo& info);
 
     /**
      * @brief 获取 Lua 友好的类型名

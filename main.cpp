@@ -32,26 +32,41 @@ namespace fs = std::filesystem;
  */
 class LuaBindingASTConsumer : public clang::ASTConsumer {
 public:
-    explicit LuaBindingASTConsumer(std::vector<ExportInfo>* export_infos)
-        : export_infos_(export_infos), visitor_(nullptr) {}
+    explicit LuaBindingASTConsumer(std::vector<ExportInfo>* export_infos, const std::string& debug_log_path = "", const std::string& stats_log_path = "")
+        : export_infos_(export_infos), visitor_(nullptr), debug_log_path_(debug_log_path), stats_log_path_(stats_log_path) {}
 
     void Initialize(clang::ASTContext& Context) override {
         visitor_ = std::make_unique<LuaASTVisitor>(&Context);
+        
+        // 初始化日志系统
+        if (!debug_log_path_.empty() || !stats_log_path_.empty()) {
+            std::string debug_path = debug_log_path_.empty() ? "ast_debug.log" : debug_log_path_;
+            std::string stats_path = stats_log_path_.empty() ? "ast_stats.log" : stats_log_path_;
+            visitor_->InitializeLogging(debug_path, stats_path);
+        }
     }
 
     void HandleTranslationUnit(clang::ASTContext& Context) override {
         if (visitor_) {
             visitor_->TraverseDecl(Context.getTranslationUnitDecl());
             
+            // 生成统计报告
+            visitor_->GenerateStatisticsReport();
+            
             // 收集找到的导出项
             const auto& found_items = visitor_->GetExportedItems();
             export_infos_->insert(export_infos_->end(), found_items.begin(), found_items.end());
+            
+            // 关闭日志系统
+            visitor_->CloseLogging();
         }
     }
 
 private:
     std::vector<ExportInfo>* export_infos_;
     std::unique_ptr<LuaASTVisitor> visitor_;
+    std::string debug_log_path_;
+    std::string stats_log_path_;
 };
 
 /**
@@ -59,16 +74,18 @@ private:
  */
 class LuaBindingFrontendAction : public clang::ASTFrontendAction {
 public:
-    explicit LuaBindingFrontendAction(std::vector<ExportInfo>* export_infos)
-        : export_infos_(export_infos) {}
+    explicit LuaBindingFrontendAction(std::vector<ExportInfo>* export_infos, const std::string& debug_log_path = "", const std::string& stats_log_path = "")
+        : export_infos_(export_infos), debug_log_path_(debug_log_path), stats_log_path_(stats_log_path) {}
 
     std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(
         clang::CompilerInstance& CI, llvm::StringRef file) override {
-        return std::make_unique<LuaBindingASTConsumer>(export_infos_);
+        return std::make_unique<LuaBindingASTConsumer>(export_infos_, debug_log_path_, stats_log_path_);
     }
 
 private:
     std::vector<ExportInfo>* export_infos_;
+    std::string debug_log_path_;
+    std::string stats_log_path_;
 };
 
 /**
@@ -76,15 +93,17 @@ private:
  */
 class LuaBindingActionFactory : public clang::tooling::FrontendActionFactory {
 public:
-    explicit LuaBindingActionFactory(std::vector<ExportInfo>* export_infos)
-        : export_infos_(export_infos) {}
+    explicit LuaBindingActionFactory(std::vector<ExportInfo>* export_infos, const std::string& debug_log_path = "", const std::string& stats_log_path = "")
+        : export_infos_(export_infos), debug_log_path_(debug_log_path), stats_log_path_(stats_log_path) {}
 
     std::unique_ptr<clang::FrontendAction> create() override {
-        return std::make_unique<LuaBindingFrontendAction>(export_infos_);
+        return std::make_unique<LuaBindingFrontendAction>(export_infos_, debug_log_path_, stats_log_path_);
     }
 
 private:
     std::vector<ExportInfo>* export_infos_;
+    std::string debug_log_path_;
+    std::string stats_log_path_;
 };
 
 /**
@@ -307,6 +326,19 @@ int main(int argc, char* argv[]) {
         // 创建 AST 访问器并分析源文件
         std::cout << "🔍 开始分析源文件..." << std::endl;
         
+        // 准备日志文件路径
+        std::string debug_log_path = options.output_dir + "/ast_debug.log";
+        std::string stats_log_path = options.output_dir + "/ast_stats.log";
+        
+        // 创建输出目录（如果不存在）
+        if (!fs::exists(options.output_dir)) {
+            Logger::info("创建输出目录: " + options.output_dir);
+            fs::create_directories(options.output_dir);
+        }
+        
+        std::cout << "📝 日志文件: " << debug_log_path << std::endl;
+        std::cout << "📊 统计文件: " << stats_log_path << std::endl;
+        
         // 使用Clang工具分析源文件
         std::vector<ExportInfo> export_infos;
         
@@ -315,7 +347,7 @@ int main(int argc, char* argv[]) {
             clang::tooling::ClangTool tool(compile_db, input_files);
             
             // 创建动作工厂
-            auto action_factory = std::make_unique<LuaBindingActionFactory>(&export_infos);
+            auto action_factory = std::make_unique<LuaBindingActionFactory>(&export_infos, debug_log_path, stats_log_path);
             
             // 运行工具
             int result = tool.run(action_factory.get());

@@ -5,8 +5,8 @@ project(LuaBindingGenerator_Examples VERSION 1.0.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 查找依赖
-find_package(Lua REQUIRED)
+# 使用 thirdparty 中的 Lua，不使用 find_package
+# find_package(Lua REQUIRED) # 已禁用，使用 thirdparty 版本
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
     pkg_check_modules(SOL2 QUIET sol2)
@@ -49,112 +49,94 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
 endif()
 
 # ================================
-# Comprehensive Test Example
+# Complete Example (使用实际存在的文件)
 # ================================
 
-# Check if binding files exist
+# 检查绑定文件是否存在
 set(MODULE_BINDINGS_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../generated_bindings/generated_module_bindings.cpp")
-set(COMPREHENSIVE_SOURCES
-    comprehensive_test.h
-    comprehensive_test.cpp
-    comprehensive_main.cpp
+set(COMPLETE_EXAMPLE_SOURCES
+    complete_example.h
+    complete_example.cpp
+    main.cpp
 )
 
 if(EXISTS "${MODULE_BINDINGS_FILE}")
-    list(APPEND COMPREHENSIVE_SOURCES "../generated_bindings/generated_module_bindings.cpp")
-    message(STATUS "Using generated module bindings")
+    list(APPEND COMPLETE_EXAMPLE_SOURCES "../generated_bindings/generated_module_bindings.cpp")
+    message(STATUS "Using generated module bindings for complete example")
 else()
     message(WARNING "Module bindings not found - building without Lua integration")
 endif()
 
-add_executable(comprehensive_test ${COMPREHENSIVE_SOURCES})
+add_executable(complete_example ${COMPLETE_EXAMPLE_SOURCES})
+
+set_target_properties(complete_example PROPERTIES
+    OUTPUT_NAME complete_example
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/examples
+)
+
+# 为 complete_example 添加线程库和 Lua 库
+find_package(Threads REQUIRED)
+target_link_libraries(complete_example PRIVATE 
+    Threads::Threads
+    lua_static
+    spdlog::spdlog
+)
+
+# ================================
+# 其他示例目标（传统目标，但使用 complete_example 文件）
+# ================================
+
+# 为向后兼容性，创建别名目标
+add_executable(comprehensive_test ${COMPLETE_EXAMPLE_SOURCES})
+add_executable(simple_example ${COMPLETE_EXAMPLE_SOURCES})
+add_executable(game_engine_example ${COMPLETE_EXAMPLE_SOURCES})
 
 set_target_properties(comprehensive_test PROPERTIES
     OUTPUT_NAME comprehensive_test
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/examples
 )
 
-# 为comprehensive_test添加线程库和Lua库
-find_package(Threads REQUIRED)
-target_link_libraries(comprehensive_test PRIVATE 
-    Threads::Threads
-    ${LUA_LIBRARIES}
-)
-
-# ================================
-# Simple Example
-# ================================
-
-# Check if binding files exist  
-set(SIMPLE_SOURCES
-    simple_example.h
-    simple_example.cpp
-    simple_main.cpp
-)
-
-if(EXISTS "${MODULE_BINDINGS_FILE}")
-    list(APPEND SIMPLE_SOURCES "../generated_bindings/generated_module_bindings.cpp")
-    message(STATUS "Using generated module bindings for simple example")
-else()
-    message(WARNING "Module bindings not found - building without Lua integration")
-endif()
-
-add_executable(simple_example ${SIMPLE_SOURCES})
-
 set_target_properties(simple_example PROPERTIES
     OUTPUT_NAME simple_example
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/examples
 )
-
-# 为simple_example添加Lua库
-target_link_libraries(simple_example PRIVATE ${LUA_LIBRARIES})
-
-# ================================
-# Game Engine Example
-# ================================
-
-# Check if binding files exist
-set(ENGINE_SOURCES
-    game_engine.h
-    game_engine.cpp
-    game_engine_main.cpp
-)
-
-if(EXISTS "${MODULE_BINDINGS_FILE}")
-    list(APPEND ENGINE_SOURCES "../generated_bindings/generated_module_bindings.cpp")
-    message(STATUS "Using generated module bindings for game engine example")
-else()
-    message(WARNING "Module bindings not found - building without Lua integration")
-endif()
-
-add_executable(game_engine_example ${ENGINE_SOURCES})
 
 set_target_properties(game_engine_example PROPERTIES
     OUTPUT_NAME game_engine_example
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/examples
 )
 
-# 为game_engine_example添加线程库和Lua库
-find_package(Threads REQUIRED)
+# 为所有目标添加相同的依赖
+target_link_libraries(comprehensive_test PRIVATE 
+    Threads::Threads
+    lua_static
+    spdlog::spdlog
+)
+
+target_link_libraries(simple_example PRIVATE 
+    Threads::Threads
+    lua_static
+    spdlog::spdlog
+)
+
 target_link_libraries(game_engine_example PRIVATE 
     Threads::Threads
-    ${LUA_LIBRARIES}
+    lua_static
+    spdlog::spdlog
 )
 
 # ================================
 # 安装配置
 # ================================
 
-install(TARGETS comprehensive_test simple_example game_engine_example
+install(TARGETS complete_example comprehensive_test simple_example game_engine_example
     RUNTIME DESTINATION examples
     COMPONENT examples
 )
 
 # 安装头文件（可选，用于参考）
 install(FILES
-    comprehensive_test.h
-    simple_example.h
-    game_engine.h
+    complete_example.h
     DESTINATION include/examples
     COMPONENT examples-dev
 )
@@ -166,6 +148,7 @@ install(FILES
 enable_testing()
 
 # 基础运行测试
+add_test(NAME run_complete_example COMMAND complete_example)
 add_test(NAME run_comprehensive_test COMMAND comprehensive_test)
 add_test(NAME run_simple_example COMMAND simple_example)
 add_test(NAME run_game_engine_example COMMAND game_engine_example)
@@ -182,18 +165,17 @@ add_test(NAME run_game_engine_example COMMAND game_engine_example)
 
 # 生成绑定的自定义目标
 add_custom_target(generate_bindings
-    COMMAND ${CMAKE_SOURCE_DIR}/lua_binding_generator --verbose --output_dir=generated_bindings examples/*.h
+    COMMAND ${CMAKE_BINARY_DIR}/lua_binding_generator --verbose --output_dir=../generated_bindings complete_example.h
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Generating Lua bindings for all examples"
+    DEPENDS lua_binding_generator
+    COMMENT "Generating Lua bindings for complete example"
 )
 
 # 运行所有示例的自定义目标
 add_custom_target(run_all_examples
-    COMMAND echo "Running Comprehensive Test..." && $<TARGET_FILE:comprehensive_test>
-    COMMAND echo "Running Simple Example..." && $<TARGET_FILE:simple_example>
-    COMMAND echo "Running Game Engine Example..." && $<TARGET_FILE:game_engine_example>
-    DEPENDS comprehensive_test simple_example game_engine_example
-    COMMENT "Running all example programs"
+    COMMAND echo "Running Complete Example..." && $<TARGET_FILE:complete_example>
+    DEPENDS complete_example
+    COMMENT "Running complete example program"
 )
 
 # ================================
@@ -214,12 +196,13 @@ add_custom_target(clean_bindings
 message(STATUS "=== Lua Binding Generator Examples ===")
 message(STATUS "Examples will be built to: ${CMAKE_BINARY_DIR}/examples")
 message(STATUS "Available targets:")
-message(STATUS "  - comprehensive_test: Complete feature demonstration")
-message(STATUS "  - simple_example: Basic usage example")
-message(STATUS "  - game_engine_example: Advanced game engine simulation")
-message(STATUS "  - generate_bindings: Generate Lua bindings for examples")
-message(STATUS "  - run_all_examples: Run all example programs")
-message(STATUS "  - clean_bindings: Clean generated binding files")
+message(STATUS "  - complete_example: 主要示例程序")
+message(STATUS "  - comprehensive_test: 兼容性别名（同 complete_example）")
+message(STATUS "  - simple_example: 兼容性别名（同 complete_example）")
+message(STATUS "  - game_engine_example: 兼容性别名（同 complete_example）")
+message(STATUS "  - generate_bindings: 生成 Lua 绑定文件")
+message(STATUS "  - run_all_examples: 运行所有示例程序")
+message(STATUS "  - clean_bindings: 清理生成的绑定文件")
 message(STATUS "=======================================")
 
 # 显示构建信息

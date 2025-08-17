@@ -9,7 +9,11 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <set>
 #include <memory>
+#include <fstream>
+#include <iomanip>
+#include <chrono>
 
 namespace lua_binding_generator {
 
@@ -33,7 +37,8 @@ struct ExportInfo {
         Module,             ///< 模块
         Operator,           ///< 操作符重载
         TypeConverter,      ///< 类型转换器
-        Inherit             ///< 继承关系
+        Inherit,            ///< 继承关系
+        STLContainer        ///< STL容器
     };
     
     /// 属性访问类型
@@ -158,6 +163,14 @@ public:
      */
     bool VisitNamespaceDecl(clang::NamespaceDecl* decl);
     
+    /**
+     * @brief 处理容器导出标记变量
+     * @param decl 变量声明
+     * @param export_type 导出注解类型
+     * @return true 继续遍历，false 停止遍历
+     */
+    bool ProcessContainerExport(clang::VarDecl* decl, const std::string& export_type);
+    
     // 访问器结果获取
     
     /**
@@ -182,12 +195,34 @@ public:
      * @return 错误信息向量的常量引用
      */
     const std::vector<std::string>& GetErrors() const;
+    
+    /**
+     * @brief 初始化日志系统
+     * @param debug_log_path 调试日志文件路径
+     * @param stats_log_path 统计日志文件路径
+     */
+    void InitializeLogging(const std::string& debug_log_path, const std::string& stats_log_path);
+    
+    /**
+     * @brief 生成统计报告
+     */
+    void GenerateStatisticsReport() const;
+    
+    /**
+     * @brief 关闭日志系统
+     */
+    void CloseLogging();
 
 private:
     clang::ASTContext* context_;                ///< AST 上下文
     std::vector<ExportInfo> exported_items_;   ///< 导出项列表
     std::vector<std::string> errors_;          ///< 错误信息列表
     size_t processed_files_;                   ///< 已处理文件数
+    
+    // 日志和统计相关
+    mutable std::ofstream debug_log_;          ///< 调试日志文件流
+    mutable std::ofstream stats_log_;          ///< 统计日志文件流
+    std::map<std::string, int> type_counts_;   ///< 类型统计计数器
     
     // 内部辅助方法
     
@@ -278,6 +313,104 @@ private:
      * @return true 如果有效，false 否则
      */
     bool ValidateExportInfo(const ExportInfo& info);
+    
+    /**
+     * @brief 自动提取类的所有公共成员
+     * @param record_decl 类声明节点
+     * @param class_type 类的导出类型 ("class", "static_class", "singleton")
+     */
+    void ExtractClassMembers(const clang::CXXRecordDecl* record_decl, const std::string& class_type = "class");
+    
+    /**
+     * @brief 提取继承的方法（如果基类未导出到Lua）
+     * @param record_decl 类声明节点
+     * @param class_name 当前类名
+     * @param existing_members 已存在的成员集合（用于避免重复）
+     */
+    void ExtractInheritedMethods(const clang::CXXRecordDecl* record_decl, const std::string& class_name, std::set<std::string>& existing_members);
+    
+    /**
+     * @brief 检查类是否导出到Lua
+     * @param record_decl 类声明节点
+     * @return 如果类有导出注解则返回true
+     */
+    bool IsClassExportedToLua(const clang::CXXRecordDecl* record_decl) const;
+    
+    // 日志辅助方法
+    
+    /**
+     * @brief 写入调试日志
+     * @param level 日志级别
+     * @param function 函数名
+     * @param message 日志消息
+     */
+    void WriteDebugLog(const std::string& level, const std::string& function, const std::string& message) const;
+    
+    /**
+     * @brief 记录访问开始
+     * @param visitor_name 访问器名称
+     * @param decl_name 声明名称
+     * @param source_loc 源码位置
+     */
+    void LogVisitStart(const std::string& visitor_name, const std::string& decl_name, const std::string& source_loc) const;
+    
+    /**
+     * @brief 记录访问结束
+     * @param visitor_name 访问器名称
+     * @param success 是否成功
+     * @param reason 原因
+     */
+    void LogVisitEnd(const std::string& visitor_name, bool success, const std::string& reason = "") const;
+    
+    /**
+     * @brief 更新类型统计
+     * @param export_type 导出类型
+     */
+    void UpdateTypeStatistics(const std::string& export_type);
+    
+    /**
+     * @brief 获取当前时间戳
+     * @return 格式化的时间戳字符串
+     */
+    std::string GetTimestamp() const;
+    
+    // 智能容器命名辅助方法
+    
+    /**
+     * @brief 将字符串首字母大写
+     * @param str 输入字符串
+     * @return 首字母大写的字符串
+     */
+    std::string CapitalizeFirst(const std::string& str);
+    
+    /**
+     * @brief 将类型名称转换为友好的 Lua 名称
+     * @param type_name 类型名称（如 std::string, demo::Player）
+     * @return 友好的名称（如 StdString, DemoPlayer）
+     */
+    std::string ConvertTypeToFriendlyName(const std::string& type_name);
+    
+    /**
+     * @brief 生成 Vector 容器的 Lua 名称
+     * @param element_type 元素类型
+     * @return Vector 容器名称（如 IntVector, StdStringVector）
+     */
+    std::string GenerateVectorName(const std::string& element_type);
+    
+    /**
+     * @brief 生成 Map 容器的 Lua 名称
+     * @param key_value_types 键值类型对，格式：KeyType,ValueType
+     * @return Map 容器名称（如 IntStdStringMap）
+     */
+    std::string GenerateMapName(const std::string& key_value_types);
+    
+    /**
+     * @brief 生成通用容器的 Lua 名称（后备方案）
+     * @param container_type 容器类型
+     * @param type_info 类型信息
+     * @return 通用容器名称
+     */
+    std::string GenerateGenericContainerName(const std::string& container_type, const std::string& type_info);
 };
 
 } // namespace lua_binding_generator

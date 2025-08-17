@@ -11,32 +11,92 @@ option(GENERATE_LUA_BINDINGS "自动生成 Lua 绑定文件" OFF)
 # 选项：是否编译示例代码
 option(BUILD_EXAMPLES "编译示例代码" OFF)
 
-# 检测 LLVM 安装
-if(EXISTS "/opt/homebrew/opt/llvm")
-    # macOS Homebrew LLVM
-    set(LLVM_ROOT "/opt/homebrew/opt/llvm")
-    set(LLVM_INCLUDE_DIRS "${LLVM_ROOT}/include")
-    set(LLVM_LIBRARY_DIRS "${LLVM_ROOT}/lib")
-    message(STATUS "使用 Homebrew LLVM: ${LLVM_ROOT}")
-elseif(EXISTS "/usr/local/opt/llvm")
-    # macOS Homebrew LLVM (Intel)
-    set(LLVM_ROOT "/usr/local/opt/llvm")
-    set(LLVM_INCLUDE_DIRS "${LLVM_ROOT}/include")
-    set(LLVM_LIBRARY_DIRS "${LLVM_ROOT}/lib")
-    message(STATUS "使用 Homebrew LLVM (Intel): ${LLVM_ROOT}")
-elseif(EXISTS "/usr/include/clang")
-    # 系统安装的 LLVM/Clang
-    set(LLVM_INCLUDE_DIRS "/usr/include")
-    set(LLVM_LIBRARY_DIRS "/usr/lib")
-    message(STATUS "使用系统 LLVM/Clang")
+# 选项：是否使用 thirdparty 中的 LLVM（当系统找不到时）
+option(USE_THIRDPARTY_LLVM "使用 thirdparty 中的 LLVM" OFF)
+
+# 添加 thirdparty 库
+add_subdirectory(thirdparty/lua-5.4.8)
+add_subdirectory(thirdparty/spdlog-1.15.3)
+
+# 检测 LLVM/Clang - 按优先级顺序
+set(LLVM_FOUND FALSE)
+set(LLVM_ROOT "")
+set(LLVM_INCLUDE_DIRS "")
+set(LLVM_LIBRARY_DIRS "")
+
+# 1. 尝试使用 find_package 查找系统安装的 LLVM
+find_package(LLVM QUIET CONFIG)
+if(LLVM_FOUND)
+    set(LLVM_ROOT ${LLVM_INSTALL_PREFIX})
+    set(LLVM_INCLUDE_DIRS ${LLVM_INCLUDE_DIRS})
+    set(LLVM_LIBRARY_DIRS ${LLVM_LIBRARY_DIRS})
+    message(STATUS "使用 find_package 找到的 LLVM: ${LLVM_ROOT}")
 else()
-    message(FATAL_ERROR "未找到 LLVM/Clang 开发库。请安装：brew install llvm")
+    # 2. 检查环境变量
+    if(DEFINED ENV{LLVM_ROOT} AND EXISTS "$ENV{LLVM_ROOT}")
+        set(LLVM_ROOT "$ENV{LLVM_ROOT}")
+        set(LLVM_INCLUDE_DIRS "${LLVM_ROOT}/include")
+        set(LLVM_LIBRARY_DIRS "${LLVM_ROOT}/lib")
+        set(LLVM_FOUND TRUE)
+        message(STATUS "使用环境变量 LLVM_ROOT: ${LLVM_ROOT}")
+    elseif(DEFINED ENV{CLANG_ROOT} AND EXISTS "$ENV{CLANG_ROOT}")
+        set(LLVM_ROOT "$ENV{CLANG_ROOT}")
+        set(LLVM_INCLUDE_DIRS "${LLVM_ROOT}/include")
+        set(LLVM_LIBRARY_DIRS "${LLVM_ROOT}/lib")
+        set(LLVM_FOUND TRUE)
+        message(STATUS "使用环境变量 CLANG_ROOT: ${LLVM_ROOT}")
+    else()
+        # 3. 检查系统默认安装路径
+        set(LLVM_SEARCH_PATHS
+            "/opt/homebrew/opt/llvm"        # macOS Homebrew ARM
+            "/usr/local/opt/llvm"           # macOS Homebrew Intel
+            "/usr/lib/llvm-18"              # Ubuntu/Debian
+            "/usr/lib/llvm-17"
+            "/usr/lib/llvm-16"
+            "/usr/lib/llvm-15"
+            "/usr/local/llvm"               # 通用路径
+            "/usr"                          # 系统路径
+        )
+        
+        foreach(SEARCH_PATH ${LLVM_SEARCH_PATHS})
+            if(EXISTS "${SEARCH_PATH}/include/clang" OR EXISTS "${SEARCH_PATH}/include/llvm")
+                set(LLVM_ROOT "${SEARCH_PATH}")
+                set(LLVM_INCLUDE_DIRS "${LLVM_ROOT}/include")
+                set(LLVM_LIBRARY_DIRS "${LLVM_ROOT}/lib")
+                set(LLVM_FOUND TRUE)
+                message(STATUS "在系统路径找到 LLVM: ${LLVM_ROOT}")
+                break()
+            endif()
+        endforeach()
+        
+        # 4. 如果系统找不到且启用了 USE_THIRDPARTY_LLVM，使用 thirdparty
+        if(NOT LLVM_FOUND AND USE_THIRDPARTY_LLVM)
+            set(THIRDPARTY_LLVM_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/llvm-20.1.8")
+            if(EXISTS "${THIRDPARTY_LLVM_ROOT}")
+                set(LLVM_ROOT "${THIRDPARTY_LLVM_ROOT}")
+                set(LLVM_INCLUDE_DIRS "${LLVM_ROOT}/include")
+                set(LLVM_LIBRARY_DIRS "${LLVM_ROOT}/lib")
+                set(LLVM_FOUND TRUE)
+                message(STATUS "使用 thirdparty LLVM: ${LLVM_ROOT}")
+                message(WARNING "使用 thirdparty LLVM 可能需要先编译。请参考 thirdparty/llvm-20.1.8/README.md")
+            endif()
+        endif()
+        
+        # 5. 都找不到则报错
+        if(NOT LLVM_FOUND)
+            message(FATAL_ERROR "未找到 LLVM/Clang 开发库。请：\n"
+                              "1. 安装系统版本：brew install llvm 或 apt-get install llvm-dev clang-dev\n"
+                              "2. 设置环境变量：export LLVM_ROOT=/path/to/llvm\n"
+                              "3. 或启用 thirdparty：-DUSE_THIRDPARTY_LLVM=ON")
+        endif()
+    endif()
 endif()
 
 # 头文件目录
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/spdlog-1.15.3/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/sol2-3.3.0/include
     ${LLVM_INCLUDE_DIRS}
 )
 
@@ -97,12 +157,22 @@ find_library(CLANG_SERIALIZATION_LIB clangSerialization PATHS ${LLVM_LIBRARY_DIR
 find_library(CLANG_CPP_LIB clang-cpp PATHS ${LLVM_LIBRARY_DIRS})
 find_library(LLVM_LIB LLVM PATHS ${LLVM_LIBRARY_DIRS})
 
-# 获取 LLVM 系统依赖
-execute_process(
-    COMMAND ${LLVM_ROOT}/bin/llvm-config --system-libs
-    OUTPUT_VARIABLE LLVM_SYSTEM_LIBS
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
+# 获取 LLVM 系统依赖（如果 llvm-config 存在）
+set(LLVM_SYSTEM_LIBS "")
+if(EXISTS "${LLVM_ROOT}/bin/llvm-config")
+    execute_process(
+        COMMAND ${LLVM_ROOT}/bin/llvm-config --system-libs
+        OUTPUT_VARIABLE LLVM_SYSTEM_LIBS
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+else()
+    # 通用系统库
+    set(LLVM_SYSTEM_LIBS "-lz -ltinfo -lm")
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        set(LLVM_SYSTEM_LIBS "${LLVM_SYSTEM_LIBS} -framework CoreFoundation")
+    endif()
+endif()
 
 # 链接库
 if(CLANG_CPP_LIB AND LLVM_LIB)
@@ -110,6 +180,7 @@ if(CLANG_CPP_LIB AND LLVM_LIB)
     target_link_libraries(lua_binding_generator
         ${CLANG_CPP_LIB}
         ${LLVM_LIB}
+        spdlog::spdlog
         ${LLVM_SYSTEM_LIBS}
     )
     message(STATUS "使用共享库: clang-cpp + LLVM")
@@ -127,6 +198,7 @@ else()
         ${CLANG_ANALYSIS_LIB}
         ${CLANG_DRIVER_LIB}
         ${CLANG_SERIALIZATION_LIB}
+        spdlog::spdlog
         ${LLVM_SYSTEM_LIBS}
     )
     message(STATUS "使用静态库")

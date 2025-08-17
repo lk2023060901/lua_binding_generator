@@ -83,6 +83,8 @@ double calculateDistance(double x1, double y1, double x2, double y2);
 | `EXPORT_LUA_TEMPLATE`          | 模板类导出   | `class EXPORT_LUA_TEMPLATE(T) Container {}`       |
 | `EXPORT_LUA_IGNORE`            | 忽略导出     | `EXPORT_LUA_IGNORE() void internal();`            |
 
+> **注意**: 抽象类通常通过智能继承机制处理，自动将基类方法添加到派生类绑定中
+
 ### 便利宏
 
 | 宏名                            | 用途     | 等价于                                  |
@@ -207,8 +209,10 @@ public:
     static const double E;
 };
 
-// 3. 抽象基类 - 支持多态
-class EXPORT_LUA_ABSTRACT_CLASS() Component {
+// 3. 抽象基类处理 - 智能继承机制
+// 注意：抽象类通常不直接导出到 Lua，而是通过智能继承机制
+// 将抽象基类的公共方法自动添加到派生类的绑定中
+class Component {  // 不使用 EXPORT_LUA_ABSTRACT_CLASS
 public:
     Component() = default;
     virtual ~Component() = default;
@@ -218,12 +222,25 @@ public:
     virtual void update(double deltaTime) = 0;
     virtual void destroy() = 0;
     
-    // 普通虚函数 - 正常导出
+    // 普通虚函数 - 会自动继承到派生类绑定中
     virtual bool isActive() const;
     virtual void setActive(bool active);
 
 protected:
     bool active_ = true;
+};
+
+// 派生类 - 会自动包含基类的公共方法
+class EXPORT_LUA_CLASS() ConcreteComponent : public Component {
+public:
+    ConcreteComponent();
+    
+    // 实现纯虚函数
+    void initialize() override;
+    void update(double deltaTime) override;
+    void destroy() override;
+    
+    // 基类的 isActive() 和 setActive() 方法会自动添加到此类的绑定中
 };
 
 // 4. 运算符重载 - 自动映射到 Lua 元方法
@@ -417,16 +434,36 @@ scripts\build_and_test_all.bat /help
 
 ### 命名空间推导
 
-优先级：明确指定 > C++ namespace > EXPORT_LUA_MODULE > 全局
+优先级：C++ namespace > EXPORT_LUA_MODULE > 全局
 
 ```cpp
 EXPORT_LUA_MODULE(GameCore)
 
 namespace game {
     class EXPORT_LUA_CLASS() Player {};  // 推导为 game.Player
-    
-    class EXPORT_LUA_CLASS(namespace=combat) Weapon {};  // 明确指定为 combat.Weapon
 }
+```
+
+### 智能继承方法提取
+
+当派生类导出到 Lua 而基类未导出时，工具会自动将基类的公共方法添加到派生类绑定中：
+
+```cpp
+// 基类不导出
+class Entity {
+public:
+    int getId() const;
+    void setId(int id);
+    std::string getName() const;
+    void setName(const std::string& name);
+};
+
+// 派生类导出 - 会自动包含基类方法
+class EXPORT_LUA_CLASS() Player : public Entity {
+public:
+    void levelUp();
+    // getId, setId, getName, setName 会自动添加到绑定中
+};
 ```
 
 ### 属性推导
@@ -475,7 +512,7 @@ public:
 
 ```cpp
 #include <sol/sol.hpp>
-#include "game_player.h"
+#include "complete_example.h"
 
 void register_GameCore_bindings(sol::state& lua) {
     // 创建命名空间
@@ -497,6 +534,10 @@ void register_GameCore_bindings(sol::state& lua) {
         "name", sol::property(&game::Player::getName, &game::Player::setName),
         "level", sol::readonly_property(&game::Player::getLevel),
         "health", sol::property(&game::Player::getHealth, &game::Player::setHealth),
+        
+        // 继承的基类方法（自动包含）
+        "getId", &game::Player::getId,
+        "setId", &game::Player::setId,
         
         // 方法
         "attack", &game::Player::attack,
