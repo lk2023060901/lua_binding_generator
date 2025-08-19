@@ -72,10 +72,8 @@ bool LuaASTVisitor::VisitCXXRecordDecl(clang::CXXRecordDecl* decl) {
     info.attributes = ParseAnnotationAttributes(export_type);
     info.base_classes = ExtractBaseClasses(decl);
     
-    // 提取命名空间信息
-    if (auto ns_decl = llvm::dyn_cast_or_null<clang::NamespaceDecl>(decl->getDeclContext())) {
-        info.namespace_name = ns_decl->getNameAsString();
-    }
+    // 提取命名空间信息 - 使用改进的推导方法
+    info.namespace_name = DeduceNamespaceForDecl(decl);
     
     if (ValidateExportInfo(info)) {
         // 保存export_type，因为move后不能再访问info
@@ -305,6 +303,7 @@ bool LuaASTVisitor::VisitFunctionDecl(clang::FunctionDecl* decl) {
     info.file_path = GetFilePath(decl->getLocation());
     info.attributes = ParseAnnotationAttributes(export_type);
     info.return_type = ExtractTypeInfo(decl->getReturnType());
+    info.namespace_name = DeduceNamespaceForDecl(decl);
     
     ExtractParameterInfo(decl, info.parameter_types, info.parameter_names);
     
@@ -350,6 +349,7 @@ bool LuaASTVisitor::VisitEnumDecl(clang::EnumDecl* decl) {
     info.source_location = GetSourceLocationString(decl->getLocation());
     info.file_path = GetFilePath(decl->getLocation());
     info.attributes = ParseAnnotationAttributes(export_type);
+    info.namespace_name = DeduceNamespaceForDecl(decl);
     
     // 提取枚举值
     std::vector<std::string> enum_values;
@@ -431,9 +431,9 @@ bool LuaASTVisitor::VisitVarDecl(clang::VarDecl* decl) {
     info.attributes = ParseAnnotationAttributes(export_type);
     info.return_type = ExtractTypeInfo(decl->getType());
     
-    // 提取命名空间信息
-    if (auto ns_decl = llvm::dyn_cast_or_null<clang::NamespaceDecl>(decl->getDeclContext())) {
-        info.namespace_name = ns_decl->getNameAsString();
+    // 提取命名空间信息 - 使用改进的推导方法
+    info.namespace_name = DeduceNamespaceForDecl(decl);
+    if (!info.namespace_name.empty()) {
         WriteDebugLog("DETAIL", "VisitVarDecl", "Constant belongs to namespace: " + info.namespace_name);
     }
     
@@ -547,20 +547,8 @@ bool LuaASTVisitor::ProcessContainerExport(clang::VarDecl* decl, const std::stri
     // 处理类型信息中的命名空间限定
     std::string qualified_type_info = type_info;
     
-    // 提取命名空间信息（跳过匿名命名空间）
-    std::string namespace_name;
-    auto context = decl->getDeclContext();
-    while (context) {
-        if (auto ns_decl = llvm::dyn_cast<clang::NamespaceDecl>(context)) {
-            WriteDebugLog("DETAIL", "ProcessContainerExport", "Found namespace: " + ns_decl->getNameAsString() + " (anonymous: " + (ns_decl->isAnonymousNamespace() ? "yes" : "no") + ")");
-            if (!ns_decl->isAnonymousNamespace()) {
-                namespace_name = ns_decl->getNameAsString();
-                WriteDebugLog("DETAIL", "ProcessContainerExport", "Using namespace: " + namespace_name);
-                break;
-            }
-        }
-        context = context->getParent();
-    }
+    // 提取命名空间信息 - 使用改进的推导方法
+    std::string namespace_name = DeduceNamespaceForDecl(decl);
     
     if (namespace_name.empty()) {
         WriteDebugLog("DETAIL", "ProcessContainerExport", "No non-anonymous namespace found");
@@ -898,10 +886,8 @@ void LuaASTVisitor::ExtractClassMembers(const clang::CXXRecordDecl* record_decl,
     WriteDebugLog("INFO", "ExtractClassMembers", "Starting member extraction for class " + class_name + " (type: " + class_type + ")");
     WriteDebugLog("DETAIL", "ExtractClassMembers", "Class qualified name: " + qualified_class_name);
     
-    // 获取命名空间信息
-    if (auto ns_decl = llvm::dyn_cast_or_null<clang::NamespaceDecl>(record_decl->getDeclContext())) {
-        namespace_name = ns_decl->getNameAsString();
-    }
+    // 获取命名空间信息 - 使用改进的推导方法
+    namespace_name = DeduceNamespaceForDecl(record_decl);
     
     // 创建唯一性检查集合，避免重复添加已手动导出的成员
     std::set<std::string> existing_members;
@@ -1130,7 +1116,7 @@ void LuaASTVisitor::ExtractInheritedMethods(const clang::CXXRecordDecl* record_d
                                     info.file_path = GetFilePath(method->getLocation());
                                     info.parent_class = class_name;  // 属于当前类
                                     info.owner_class = class_name;   // 拥有者是当前类
-                                    info.namespace_name = "";
+                                    info.namespace_name = DeduceNamespaceForDecl(method);
                                     
                                     // 提取参数信息
                                     ExtractParameterInfo(method, info.parameter_types, info.parameter_names);
@@ -1159,6 +1145,98 @@ void LuaASTVisitor::ExtractInheritedMethods(const clang::CXXRecordDecl* record_d
     }
     
     WriteDebugLog("INFO", "ExtractInheritedMethods", "Completed inherited method extraction for class " + class_name);
+}
+
+std::string LuaASTVisitor::DeduceNamespaceForDecl(const clang::Decl* decl) {
+    WriteDebugLog("DETAIL", "DeduceNamespaceForDecl", "开始推导声明的命名空间");
+    
+    // 方法1：直接检查声明上下文，优先查找有导出注解的命名空间
+    if (auto ns_decl = llvm::dyn_cast_or_null<clang::NamespaceDecl>(decl->getDeclContext())) {
+        std::string namespace_name = ns_decl->getNameAsString();
+        WriteDebugLog("DETAIL", "DeduceNamespaceForDecl", "从声明上下文发现命名空间: " + namespace_name);
+        
+        // 检查此命名空间是否有导出注解
+        std::string export_type;
+        if (HasLuaExportAnnotation(ns_decl, export_type)) {
+            WriteDebugLog("INFO", "DeduceNamespaceForDecl", "命名空间有导出注解: " + export_type);
+            return namespace_name;
+        }
+        
+        // 即使没有导出注解，如果是有意义的命名空间名称，也保留
+        if (!namespace_name.empty() && namespace_name != "std" && namespace_name != "__1") {
+            WriteDebugLog("INFO", "DeduceNamespaceForDecl", "使用有意义的命名空间名称: " + namespace_name);
+            return namespace_name;
+        }
+    }
+    
+    // 方法2：向上遍历上下文栈，寻找有意义的命名空间
+    const clang::DeclContext* context = decl->getDeclContext();
+    while (context) {
+        if (auto ns_decl = llvm::dyn_cast<clang::NamespaceDecl>(context)) {
+            std::string namespace_name = ns_decl->getNameAsString();
+            
+            // 优先返回有导出注解的命名空间
+            std::string export_type;
+            if (HasLuaExportAnnotation(ns_decl, export_type)) {
+                WriteDebugLog("INFO", "DeduceNamespaceForDecl", "在上下文栈中发现已导出命名空间: " + namespace_name);
+                return namespace_name;
+            }
+            
+            // 如果是有意义的命名空间名称，记录但继续查找更好的
+            if (!namespace_name.empty() && namespace_name != "std" && namespace_name != "__1") {
+                WriteDebugLog("DETAIL", "DeduceNamespaceForDecl", "找到有意义的命名空间: " + namespace_name);
+                // 继续向上查找，但保留这个作为候选
+                const clang::DeclContext* parent_context = context->getParent();
+                bool found_better = false;
+                
+                // 检查父级是否有更好的命名空间
+                while (parent_context) {
+                    if (auto parent_ns = llvm::dyn_cast<clang::NamespaceDecl>(parent_context)) {
+                        std::string parent_name = parent_ns->getNameAsString();
+                        std::string parent_export_type;
+                        if (HasLuaExportAnnotation(parent_ns, parent_export_type)) {
+                            WriteDebugLog("INFO", "DeduceNamespaceForDecl", "找到更好的已导出父命名空间: " + parent_name);
+                            return parent_name;
+                        }
+                    }
+                    parent_context = parent_context->getParent();
+                }
+                
+                // 没有找到更好的，使用当前的
+                return namespace_name;
+            }
+        }
+        context = context->getParent();
+    }
+    
+    // 方法3：检查已知的导出命名空间列表
+    for (const auto& item : exported_items_) {
+        if (item.type == ExportInfo::Type::Namespace) {
+            // 检查声明是否在此命名空间中
+            if (auto ns_decl = llvm::dyn_cast_or_null<clang::NamespaceDecl>(decl->getDeclContext())) {
+                if (ns_decl->getNameAsString() == item.name) {
+                    WriteDebugLog("INFO", "DeduceNamespaceForDecl", "匹配到已导出的命名空间: " + item.name);
+                    return item.name;
+                }
+            }
+        }
+    }
+    
+    // 方法4：从限定名称中推导命名空间
+    std::string qualified_name = GetQualifiedName(llvm::dyn_cast<clang::NamedDecl>(decl));
+    if (!qualified_name.empty()) {
+        size_t pos = qualified_name.find("::");
+        if (pos != std::string::npos) {
+            std::string deduced_ns = qualified_name.substr(0, pos);
+            if (!deduced_ns.empty() && deduced_ns != "std" && deduced_ns != "__1") {
+                WriteDebugLog("INFO", "DeduceNamespaceForDecl", "从限定名推导出命名空间: " + deduced_ns);
+                return deduced_ns;
+            }
+        }
+    }
+    
+    WriteDebugLog("WARN", "DeduceNamespaceForDecl", "无法推导命名空间，返回空字符串");
+    return "";
 }
 
 bool LuaASTVisitor::IsClassExportedToLua(const clang::CXXRecordDecl* record_decl) const {

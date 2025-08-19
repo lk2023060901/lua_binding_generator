@@ -9,6 +9,7 @@
 #include <sstream>
 #include <iomanip>
 #include <set>
+#include <iostream>
 
 namespace lua_binding_generator {
 
@@ -78,7 +79,35 @@ std::string DirectBindingGenerator::NamespaceManager::ResolveNamespace(const Exp
         return info.namespace_name;
     }
     
-    // 2. 使用默认全局命名空间
+    // 2. 从 qualified_name 中推导命名空间
+    if (!info.qualified_name.empty()) {
+        // 例如：test_coverage::TestPlayer -> test_coverage
+        size_t pos = info.qualified_name.find("::");
+        if (pos != std::string::npos) {
+            std::string deduced_ns = info.qualified_name.substr(0, pos);
+            // 验证这是一个有效的命名空间（不是类名）
+            if (deduced_ns != info.name && deduced_ns != info.parent_class) {
+                return deduced_ns;
+            }
+        }
+    }
+    
+    // 3. 从宏参数中推导命名空间
+    if (!info.attributes.empty()) {
+        auto it = info.attributes.find("namespace");
+        if (it != info.attributes.end() && !it->second.empty()) {
+            return it->second;
+        }
+    }
+    
+    // 4. 从文件路径推导模块命名空间
+    if (!info.file_path.empty()) {
+        // 如果文件在特定目录中，可能暗示命名空间
+        // 例如：examples/complete_test/ -> complete_test
+        // 但这个逻辑可能需要更多的上下文信息
+    }
+    
+    // 5. 使用默认全局命名空间
     return "global";
 }
 
@@ -128,71 +157,140 @@ DirectBindingGenerator::GenerationResult DirectBindingGenerator::GenerateModuleB
     const std::string& module_name,
     const std::vector<ExportInfo>& export_items) {
     
+    std::cout << "🔍 [GenerateModuleBinding] 方法开始执行" << std::endl;
+    std::cout << "   模块名: \"" << module_name << "\"" << std::endl;
+    std::cout << "   导出项数量: " << export_items.size() << std::endl;
+    
     GenerationResult result;
+    std::cout << "✅ [GenerateModuleBinding] GenerationResult 对象创建成功" << std::endl;
+    
     namespace_manager_.Clear();
+    std::cout << "✅ [GenerateModuleBinding] 命名空间管理器清理完成" << std::endl;
     
     try {
+        std::cout << "🔧 [GenerateModuleBinding] 创建 CodeBuilder (indent_size=" << options_.indent_size << ")" << std::endl;
         CodeBuilder builder(options_.indent_size);
+        std::cout << "✅ [GenerateModuleBinding] CodeBuilder 创建成功" << std::endl;
         
         // 1. 生成文件头部
-        builder.AddLine(GenerateFileHeader(module_name));
-        builder.AddEmptyLine();
+        std::cout << "📝 [GenerateModuleBinding] 步骤1: 生成文件头部" << std::endl;
+        try {
+            builder.AddLine(GenerateFileHeader(module_name));
+            builder.AddEmptyLine();
+            std::cout << "✅ [GenerateModuleBinding] 文件头部生成成功" << std::endl;
+        } catch (const std::exception& e) {
+            std::cout << "❌ [GenerateModuleBinding] 文件头部生成失败: " << e.what() << std::endl;
+            throw;
+        }
         
         // 2. 生成包含头文件
+        std::cout << "📦 [GenerateModuleBinding] 步骤2: 处理包含文件 (generate_includes=" << options_.generate_includes << ")" << std::endl;
         if (options_.generate_includes) {
-            builder.AddLine(GenerateIncludes(export_items));
-            builder.AddEmptyLine();
+            try {
+                builder.AddLine(GenerateIncludes(export_items));
+                builder.AddEmptyLine();
+                std::cout << "✅ [GenerateModuleBinding] 包含文件生成成功" << std::endl;
+            } catch (const std::exception& e) {
+                std::cout << "❌ [GenerateModuleBinding] 包含文件生成失败: " << e.what() << std::endl;
+                throw;
+            }
+        } else {
+            std::cout << "⏭️  [GenerateModuleBinding] 跳过包含文件生成" << std::endl;
         }
         
         // 3. 按类型分组导出项
+        std::cout << "🗂️  [GenerateModuleBinding] 步骤3: 按类型分组导出项" << std::endl;
         auto grouped_exports = GroupExportsByType(export_items);
+        std::cout << "✅ [GenerateModuleBinding] 导出项分组成功，共 " << grouped_exports.size() << " 个类型组" << std::endl;
+        
+        // 打印各类型的数量
+        for (const auto& [type, items] : grouped_exports) {
+            std::cout << "   - " << type << ": " << items.size() << " 项" << std::endl;
+        }
         
         // 4. 生成绑定代码
+        std::cout << "⚙️  [GenerateModuleBinding] 步骤4: 开始生成绑定代码" << std::endl;
         std::string bindings_code;
         CodeBuilder bindings_builder(options_.indent_size);
+        std::cout << "✅ [GenerateModuleBinding] 绑定代码 CodeBuilder 创建成功" << std::endl;
         
         // 预先收集所有需要的命名空间
-        for (const auto& item : export_items) {
-            std::string ns = namespace_manager_.ResolveNamespace(item);
-            namespace_manager_.GetNamespaceVariable(ns);
+        std::cout << "📂 [GenerateModuleBinding] 步骤4.1: 收集命名空间信息" << std::endl;
+        try {
+            for (const auto& item : export_items) {
+                std::string ns = namespace_manager_.ResolveNamespace(item);
+                namespace_manager_.GetNamespaceVariable(ns);
+            }
+            std::cout << "✅ [GenerateModuleBinding] 命名空间收集完成" << std::endl;
+        } catch (const std::exception& e) {
+            std::cout << "❌ [GenerateModuleBinding] 命名空间收集失败: " << e.what() << std::endl;
+            throw;
         }
         
         // 生成命名空间声明
+        std::cout << "📝 [GenerateModuleBinding] 步骤4.2: 生成命名空间声明 (use_namespace_tables=" << options_.use_namespace_tables << ")" << std::endl;
         if (options_.use_namespace_tables) {
-            std::string ns_declarations = GenerateNamespaceDeclarations();
-            if (!ns_declarations.empty()) {
-                bindings_builder.AddLine(ns_declarations);
-                bindings_builder.AddEmptyLine();
+            try {
+                std::string ns_declarations = GenerateNamespaceDeclarations();
+                if (!ns_declarations.empty()) {
+                    bindings_builder.AddLine(ns_declarations);
+                    bindings_builder.AddEmptyLine();
+                    std::cout << "✅ [GenerateModuleBinding] 命名空间声明生成成功" << std::endl;
+                } else {
+                    std::cout << "ℹ️  [GenerateModuleBinding] 无需生成命名空间声明" << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cout << "❌ [GenerateModuleBinding] 命名空间声明生成失败: " << e.what() << std::endl;
+                throw;
             }
+        } else {
+            std::cout << "⏭️  [GenerateModuleBinding] 跳过命名空间声明生成" << std::endl;
         }
         
         // 生成类绑定
+        std::cout << "🏗️  [GenerateModuleBinding] 步骤5: 生成类绑定" << std::endl;
         if (grouped_exports.count("class") > 0) {
+            std::cout << "   处理 " << grouped_exports.at("class").size() << " 个类绑定" << std::endl;
             bindings_builder.AddComment("Class bindings");
-            for (const auto& class_info : grouped_exports["class"]) {
-                // 找到这个类的所有成员
-                std::vector<ExportInfo> members;
-                for (const auto& item : export_items) {
-                    if (item.parent_class == class_info.name || 
-                        item.owner_class == class_info.name) {
-                        members.push_back(item);
+            
+            for (size_t i = 0; i < grouped_exports.at("class").size(); ++i) {
+                const auto& class_info = grouped_exports.at("class")[i];
+                std::cout << "   [" << (i+1) << "/" << grouped_exports.at("class").size() << "] 处理类: " << class_info.name << std::endl;
+                
+                try {
+                    // 找到这个类的所有成员
+                    std::vector<ExportInfo> members;
+                    for (const auto& item : export_items) {
+                        if (item.parent_class == class_info.name || 
+                            item.owner_class == class_info.name) {
+                            members.push_back(item);
+                        }
                     }
+                    std::cout << "     找到 " << members.size() << " 个成员" << std::endl;
+                    
+                    // 调试输出
+                    std::string debug_comment = "// DEBUG: Class " + class_info.name + " has " + 
+                                              std::to_string(members.size()) + " members";
+                    bindings_builder.AddLine(debug_comment);
+                    for (const auto& member : members) {
+                        std::string member_debug = "// DEBUG: Member - " + member.export_type + "::" + 
+                                                 member.name + " (parent: " + member.parent_class + ")";
+                        bindings_builder.AddLine(member_debug);
+                    }
+                    
+                    std::cout << "     生成类绑定代码..." << std::endl;
+                    bindings_builder.AddLine(GenerateClassBinding(class_info, members));
+                    bindings_builder.AddEmptyLine();
+                    result.total_bindings++;
+                    std::cout << "   ✅ 类 " << class_info.name << " 绑定生成成功" << std::endl;
+                    
+                } catch (const std::exception& e) {
+                    std::cout << "   ❌ 类 " << class_info.name << " 绑定生成失败: " << e.what() << std::endl;
+                    throw;
                 }
-                
-                // 调试输出
-                std::string debug_comment = "// DEBUG: Class " + class_info.name + " has " + 
-                                          std::to_string(members.size()) + " members";
-                bindings_builder.AddLine(debug_comment);
-                for (const auto& member : members) {
-                    std::string member_debug = "// DEBUG: Member - " + member.export_type + "::" + 
-                                             member.name + " (parent: " + member.parent_class + ")";
-                    bindings_builder.AddLine(member_debug);
-                }
-                
-                bindings_builder.AddLine(GenerateClassBinding(class_info, members));
-                bindings_builder.AddEmptyLine();
-                result.total_bindings++;
             }
+        } else {
+            std::cout << "   无类绑定需要处理" << std::endl;
         }
         
         // 生成静态类绑定

@@ -1,0 +1,17 @@
+# lua_binding_runtime.pc.in
+# pkg-config配置文件模板
+
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+libdir=${exec_prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: lua_binding_runtime
+Description: Lua Binding Runtime Library - 配合lua_binding_generator使用的Lua运行时库
+Version: @PROJECT_VERSION@
+URL: https://github.com/your-repo/lua_binding_generator
+
+Requires: 
+Libs: -L${libdir} -llua_binding_runtime
+Libs.private: -llua -ldl
+Cflags: -I${includedir}

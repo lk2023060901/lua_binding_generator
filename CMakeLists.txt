@@ -18,6 +18,9 @@ option(USE_THIRDPARTY_LLVM "使用 thirdparty 中的 LLVM" OFF)
 add_subdirectory(thirdparty/lua-5.4.8)
 add_subdirectory(thirdparty/spdlog-1.15.3)
 
+# 注释：运行时库代码已整合到 src/framework 和 include/framework
+# add_subdirectory(lib)
+
 # 检测 LLVM/Clang - 按优先级顺序
 set(LLVM_FOUND FALSE)
 set(LLVM_ROOT "")
@@ -94,38 +97,39 @@ endif()
 
 # 头文件目录
 include_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/tools
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/framework
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/spdlog-1.15.3/include
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/sol2-3.3.0/include
     ${LLVM_INCLUDE_DIRS}
 )
 
-# 源文件列表 - 零配置版本
+# 工具源文件列表 - 零配置版本
 set(GENERATOR_SOURCES
-    src/compiler_detector.cpp
-    src/dynamic_compilation_database.cpp
-    src/smart_inference_engine.cpp
-    src/ast_visitor.cpp
-    src/direct_binding_generator.cpp
-    src/incremental_generator.cpp
-    src/logger.cpp
+    src/tools/compiler_detector.cpp
+    src/tools/dynamic_compilation_database.cpp
+    src/tools/smart_inference_engine.cpp
+    src/tools/ast_visitor.cpp
+    src/tools/direct_binding_generator.cpp
+    src/tools/incremental_generator.cpp
+    src/tools/logger.cpp
 )
 
-# 头文件列表 - 零配置版本
+# 工具头文件列表 - 零配置版本
 set(GENERATOR_HEADERS
-    include/compiler_detector.h
-    include/dynamic_compilation_database.h
-    include/smart_inference_engine.h
-    include/ast_visitor.h
-    include/direct_binding_generator.h
-    include/incremental_generator.h
-    include/export_macros.h
-    include/logger.h
+    include/tools/compiler_detector.h
+    include/tools/dynamic_compilation_database.h
+    include/tools/smart_inference_engine.h
+    include/tools/ast_visitor.h
+    include/tools/direct_binding_generator.h
+    include/tools/incremental_generator.h
+    include/tools/logger.h
+    include/framework/export_macros.h
 )
 
 # 创建可执行文件
 add_executable(lua_binding_generator 
-    main.cpp
+    src/tools/main.cpp
     ${GENERATOR_SOURCES}
     ${GENERATOR_HEADERS}
 )

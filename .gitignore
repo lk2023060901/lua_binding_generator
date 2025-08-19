@@ -100,3 +100,6 @@ thirdparty/*/*.dylib
 thirdparty/lua-*/lua
 thirdparty/lua-*/luac
 thirdparty/lua-*/liblua.a
+
+# Claude Code 配置目录
+.claude/

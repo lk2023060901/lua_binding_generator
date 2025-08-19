@@ -1,45 +1,20 @@
 cmake_minimum_required(VERSION 3.16)
-project(LuaBindingGenerator_Examples VERSION 1.0.0 LANGUAGES CXX)
+project(LuaBindingGenerator_Examples VERSION 2.0.0 LANGUAGES CXX)
 
 # C++ 标准设置
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 使用 thirdparty 中的 Lua，不使用 find_package
-# find_package(Lua REQUIRED) # 已禁用，使用 thirdparty 版本
-find_package(PkgConfig QUIET)
-if(PkgConfig_FOUND)
-    pkg_check_modules(SOL2 QUIET sol2)
-endif()
+# 项目选项
+option(BUILD_COMPLETE_TEST "构建完整的宏覆盖和运行时集成测试" ON)
+option(BUILD_RUNTIME_DEMOS "构建运行时框架演示" OFF)
 
-# 包含目录
-include_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../generated_bindings
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${LUA_INCLUDE_DIR}
-)
+# 显示配置信息
+message(STATUS "=== Lua Binding Generator Examples v2.0.0 ===")
+message(STATUS "构建完整测试项目: ${BUILD_COMPLETE_TEST}")
+message(STATUS "构建运行时演示: ${BUILD_RUNTIME_DEMOS}")
 
-# 如果找不到sol2，尝试包含系统路径，然后使用本地副本
-if(NOT SOL2_FOUND)
-    find_path(SOL2_INCLUDE_DIR sol/sol.hpp
-        HINTS /usr/local/include /opt/homebrew/include /usr/include)
-    if(SOL2_INCLUDE_DIR)
-        include_directories(${SOL2_INCLUDE_DIR})
-        message(STATUS "Found sol2 headers at: ${SOL2_INCLUDE_DIR}")
-    else()
-        # 使用本地thirdparty目录中的sol2
-        set(LOCAL_SOL2_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/sol2-3.3.0/include)
-        if(EXISTS ${LOCAL_SOL2_DIR})
-            include_directories(${LOCAL_SOL2_DIR})
-            message(STATUS "Using local sol2 headers at: ${LOCAL_SOL2_DIR}")
-        else()
-            message(FATAL_ERROR "sol2 headers not found. Please install sol2 or ensure local copy is available.")
-        endif()
-    endif()
-endif()
-
-# 编译选项
+# 通用设置
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     add_compile_options(-Wall -Wextra -O2)
     # 禁用Sol2相关的警告
@@ -48,178 +23,84 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     add_compile_options(/W4 /O2)
 endif()
 
-# ================================
-# Complete Example (使用实际存在的文件)
-# ================================
+# 查找依赖库
+find_package(Threads REQUIRED)
 
-# 检查绑定文件是否存在
-set(MODULE_BINDINGS_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../generated_bindings/generated_module_bindings.cpp")
-set(COMPLETE_EXAMPLE_SOURCES
-    complete_example.h
-    complete_example.cpp
-    main.cpp
+# 查找Sol2
+find_path(SOL2_INCLUDE_DIR sol/sol.hpp
+    HINTS 
+        ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/sol2-3.3.0/include
+        /usr/local/include 
+        /opt/homebrew/include 
+        /usr/include
+    DOC "Sol2 include directory"
 )
 
-if(EXISTS "${MODULE_BINDINGS_FILE}")
-    list(APPEND COMPLETE_EXAMPLE_SOURCES "../generated_bindings/generated_module_bindings.cpp")
-    message(STATUS "Using generated module bindings for complete example")
-else()
-    message(WARNING "Module bindings not found - building without Lua integration")
+if(NOT SOL2_INCLUDE_DIR)
+    message(FATAL_ERROR "Sol2 headers not found. Please install sol2 or ensure it's available in thirdparty/")
 endif()
 
-add_executable(complete_example ${COMPLETE_EXAMPLE_SOURCES})
+message(STATUS "Found Sol2 headers: ${SOL2_INCLUDE_DIR}")
 
-set_target_properties(complete_example PROPERTIES
-    OUTPUT_NAME complete_example
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/examples
+# 包含通用目录
+include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include/tools
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include/framework
+    ${CMAKE_CURRENT_SOURCE_DIR}/../generated_bindings
+    ${SOL2_INCLUDE_DIR}
 )
 
-# 为 complete_example 添加线程库和 Lua 库
-find_package(Threads REQUIRED)
-target_link_libraries(complete_example PRIVATE 
-    Threads::Threads
-    lua_static
-    spdlog::spdlog
-)
+# 添加子项目
+if(BUILD_COMPLETE_TEST)
+    message(STATUS "添加完整测试子项目")
+    add_subdirectory(complete_test)
+else()
+    message(STATUS "跳过完整测试子项目")
+endif()
 
-# ================================
-# 其他示例目标（传统目标，但使用 complete_example 文件）
-# ================================
+if(BUILD_RUNTIME_DEMOS)
+    message(STATUS "添加运行时框架演示")
+    add_subdirectory(basic_runtime_usage)
+    add_subdirectory(hot_reload_demo)
+    add_subdirectory(memory_allocator_demo)
+else()
+    message(STATUS "跳过运行时框架演示")
+endif()
 
-# 为向后兼容性，创建别名目标
-add_executable(comprehensive_test ${COMPLETE_EXAMPLE_SOURCES})
-add_executable(simple_example ${COMPLETE_EXAMPLE_SOURCES})
-add_executable(game_engine_example ${COMPLETE_EXAMPLE_SOURCES})
+# 全局测试目标
+if(BUILD_COMPLETE_TEST)
+    # 添加运行所有测试的目标
+    add_custom_target(run_all_tests
+        COMMAND echo "运行完整测试套件..." && $<TARGET_FILE:complete_test>
+        DEPENDS complete_test
+        COMMENT "运行所有测试项目"
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    )
+    
+    # 添加生成绑定的目标
+    add_custom_target(generate_test_bindings
+        COMMAND echo "生成测试绑定..." && 
+                ${CMAKE_BINARY_DIR}/lua_binding_generator 
+                --output=${CMAKE_CURRENT_SOURCE_DIR}/../generated_bindings
+                ${CMAKE_CURRENT_SOURCE_DIR}/complete_test/headers/macro_coverage.h
+                ${CMAKE_CURRENT_SOURCE_DIR}/complete_test/headers/runtime_features.h
+        DEPENDS lua_binding_generator
+        COMMENT "为测试项目生成Lua绑定"
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+endif()
 
-set_target_properties(comprehensive_test PROPERTIES
-    OUTPUT_NAME comprehensive_test
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/examples
-)
-
-set_target_properties(simple_example PROPERTIES
-    OUTPUT_NAME simple_example
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/examples
-)
-
-set_target_properties(game_engine_example PROPERTIES
-    OUTPUT_NAME game_engine_example
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/examples
-)
-
-# 为所有目标添加相同的依赖
-target_link_libraries(comprehensive_test PRIVATE 
-    Threads::Threads
-    lua_static
-    spdlog::spdlog
-)
-
-target_link_libraries(simple_example PRIVATE 
-    Threads::Threads
-    lua_static
-    spdlog::spdlog
-)
-
-target_link_libraries(game_engine_example PRIVATE 
-    Threads::Threads
-    lua_static
-    spdlog::spdlog
-)
-
-# ================================
 # 安装配置
-# ================================
-
-install(TARGETS complete_example comprehensive_test simple_example game_engine_example
-    RUNTIME DESTINATION examples
-    COMPONENT examples
-)
-
-# 安装头文件（可选，用于参考）
-install(FILES
-    complete_example.h
-    DESTINATION include/examples
-    COMPONENT examples-dev
-)
-
-# ================================
-# 测试配置（可选）
-# ================================
-
-enable_testing()
-
-# 基础运行测试
-add_test(NAME run_complete_example COMMAND complete_example)
-add_test(NAME run_comprehensive_test COMMAND comprehensive_test)
-add_test(NAME run_simple_example COMMAND simple_example)
-add_test(NAME run_game_engine_example COMMAND game_engine_example)
-
-# 如果有Lua测试脚本，可以添加Lua测试
-# find_program(LUA_EXECUTABLE lua)
-# if(LUA_EXECUTABLE)
-#     add_test(NAME lua_binding_test COMMAND ${LUA_EXECUTABLE} scripts/test_all.lua)
-# endif()
-
-# ================================
-# 自定义目标
-# ================================
-
-# 生成绑定的自定义目标
-add_custom_target(generate_bindings
-    COMMAND ${CMAKE_BINARY_DIR}/lua_binding_generator --verbose --output_dir=../generated_bindings complete_example.h
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    DEPENDS lua_binding_generator
-    COMMENT "Generating Lua bindings for complete example"
-)
-
-# 运行所有示例的自定义目标
-add_custom_target(run_all_examples
-    COMMAND echo "Running Complete Example..." && $<TARGET_FILE:complete_example>
-    DEPENDS complete_example
-    COMMENT "Running complete example program"
-)
-
-# ================================
-# 清理目标
-# ================================
-
-# 清理生成的绑定文件
-add_custom_target(clean_bindings
-    COMMAND ${CMAKE_COMMAND} -E remove_directory generated_bindings
-    COMMAND ${CMAKE_COMMAND} -E remove_directory test_output
-    COMMENT "Cleaning generated binding files"
-)
-
-# ================================
-# 开发者信息
-# ================================
-
-message(STATUS "=== Lua Binding Generator Examples ===")
-message(STATUS "Examples will be built to: ${CMAKE_BINARY_DIR}/examples")
-message(STATUS "Available targets:")
-message(STATUS "  - complete_example: 主要示例程序")
-message(STATUS "  - comprehensive_test: 兼容性别名（同 complete_example）")
-message(STATUS "  - simple_example: 兼容性别名（同 complete_example）")
-message(STATUS "  - game_engine_example: 兼容性别名（同 complete_example）")
-message(STATUS "  - generate_bindings: 生成 Lua 绑定文件")
-message(STATUS "  - run_all_examples: 运行所有示例程序")
-message(STATUS "  - clean_bindings: 清理生成的绑定文件")
-message(STATUS "=======================================")
+if(BUILD_COMPLETE_TEST)
+    install(TARGETS complete_test
+        RUNTIME DESTINATION examples
+        COMPONENT examples
+    )
+endif()
 
 # 显示构建信息
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    message(STATUS "Build type: Debug")
-elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-    message(STATUS "Build type: Release")
-else()
-    message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
-endif()
-
-message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
-message(STATUS "Compiler: ${CMAKE_CXX_COMPILER_ID}")
-
-# 提供使用说明
-configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/../README.md
-    ${CMAKE_BINARY_DIR}/examples/README.md
-    COPYONLY
-)
+message(STATUS "C++ 标准: ${CMAKE_CXX_STANDARD}")
+message(STATUS "编译器: ${CMAKE_CXX_COMPILER_ID}")
+message(STATUS "构建类型: ${CMAKE_BUILD_TYPE}")
+message(STATUS "Sol2 路径: ${SOL2_INCLUDE_DIR}")
+message(STATUS "===============================================")

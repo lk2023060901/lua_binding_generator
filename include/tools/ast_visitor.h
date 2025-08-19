@@ -336,6 +336,13 @@ private:
      */
     bool IsClassExportedToLua(const clang::CXXRecordDecl* record_decl) const;
     
+    /**
+     * @brief 推导声明所在的命名空间
+     * @param decl 声明节点
+     * @return 推导出的命名空间名称
+     */
+    std::string DeduceNamespaceForDecl(const clang::Decl* decl);
+    
     // 日志辅助方法
     
     /**

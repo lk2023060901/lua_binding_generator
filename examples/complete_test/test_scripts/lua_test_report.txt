@@ -1,0 +1,21 @@
+Lua Binding Generator - Lua端测试报告
+生成时间: 2025-08-18 23:58:25
+==================================================
+
+测试摘要:
+总测试数: 5
+通过测试: 1
+失败测试: 4
+成功率: 20.0%
+总执行时间: 1 ms
+
+详细结果:
+1. [FAIL] 基础宏功能测试 (0 ms)
+   错误: basic_macro_test.lua:17: ❌ MAX_CONNECTIONS not found
+2. [FAIL] 类绑定测试 (0 ms)
+   错误: class_binding_test.lua:52: ❌ TestPlayer 类未找到
+3. [FAIL] 运算符重载测试 (0 ms)
+   错误: operator_overload_test.lua:127: ❌ TestVector2D 类未找到
+4. [FAIL] 回调和容器测试 (0 ms)
+   错误: callback_container_test.lua:123: ❌ TestEventSystem 类未找到
+5. [PASS] 运行时集成测试 (0 ms)

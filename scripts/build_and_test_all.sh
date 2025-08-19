@@ -263,10 +263,21 @@ generate_bindings() {
     
     # Generate bindings
     print_info "Running lua_binding_generator..."
+    
+    # Prepare include paths for the binding generator
+    INCLUDE_PATHS=""
+    INCLUDE_PATHS="$INCLUDE_PATHS --include=\"$PROJECT_ROOT/include/framework\""
+    INCLUDE_PATHS="$INCLUDE_PATHS --include=\"$PROJECT_ROOT/thirdparty/sol2-3.3.0/include\""
+    INCLUDE_PATHS="$INCLUDE_PATHS --include=\"$PROJECT_ROOT/thirdparty/lua-5.4.8/src\""
+    
     if [ "$VERBOSE" = true ]; then
-        "$BUILD_DIR/lua_binding_generator" --verbose --output_dir="$GENERATED_BINDINGS_DIR" $HEADER_FILES
+        print_info "Using include paths:"
+        echo "  - $PROJECT_ROOT/include/framework"
+        echo "  - $PROJECT_ROOT/thirdparty/sol2-3.3.0/include" 
+        echo "  - $PROJECT_ROOT/thirdparty/lua-5.4.8/src"
+        eval "$BUILD_DIR/lua_binding_generator" --verbose --output_dir="$GENERATED_BINDINGS_DIR" $INCLUDE_PATHS $HEADER_FILES
     else
-        "$BUILD_DIR/lua_binding_generator" --output_dir="$GENERATED_BINDINGS_DIR" $HEADER_FILES > /dev/null
+        eval "$BUILD_DIR/lua_binding_generator" --output_dir="$GENERATED_BINDINGS_DIR" $INCLUDE_PATHS $HEADER_FILES > /dev/null
     fi
     
     # Check generated files
@@ -311,10 +322,26 @@ build_examples() {
     # Check which executables were built
     BUILT_EXAMPLES=""
     
-    # Look for executables in examples subdirectory and project root
-    for dir in "$BUILD_DIR/examples" "$BUILD_DIR" "$PROJECT_ROOT"; do
+    # Look for executables in multiple locations
+    SEARCH_LOCATIONS=(
+        "$BUILD_DIR/examples"
+        "$BUILD_DIR"
+        "$PROJECT_ROOT"
+        "$BUILD_DIR/examples/complete_test"
+        "$BUILD_DIR/examples/simple_example"
+        "$BUILD_DIR/examples/game_engine_example"
+    )
+    
+    EXECUTABLE_NAMES=(
+        "simple_example"
+        "game_engine_example" 
+        "comprehensive_test"
+        "complete_test"
+    )
+    
+    for dir in "${SEARCH_LOCATIONS[@]}"; do
         if [ -d "$dir" ]; then
-            for exe in simple_example game_engine_example comprehensive_test; do
+            for exe in "${EXECUTABLE_NAMES[@]}"; do
                 if [ -f "$dir/$exe" ] && [ -x "$dir/$exe" ]; then
                     BUILT_EXAMPLES="$BUILT_EXAMPLES $dir/$exe"
                 fi
@@ -340,10 +367,26 @@ run_tests() {
     # Find all built executables
     EXECUTABLES=""
     
-    # Search in multiple possible locations
-    for dir in "$BUILD_DIR/examples" "$BUILD_DIR" "$PROJECT_ROOT"; do
+    # Search in multiple possible locations (same as build_examples function)
+    SEARCH_LOCATIONS=(
+        "$BUILD_DIR/examples"
+        "$BUILD_DIR"
+        "$PROJECT_ROOT"
+        "$BUILD_DIR/examples/complete_test"
+        "$BUILD_DIR/examples/simple_example"
+        "$BUILD_DIR/examples/game_engine_example"
+    )
+    
+    EXECUTABLE_NAMES=(
+        "simple_example"
+        "game_engine_example" 
+        "comprehensive_test"
+        "complete_test"
+    )
+    
+    for dir in "${SEARCH_LOCATIONS[@]}"; do
         if [ -d "$dir" ]; then
-            for exe in simple_example game_engine_example comprehensive_test; do
+            for exe in "${EXECUTABLE_NAMES[@]}"; do
                 if [ -f "$dir/$exe" ] && [ -x "$dir/$exe" ]; then
                     EXECUTABLES="$EXECUTABLES $dir/$exe"
                 fi
@@ -364,13 +407,16 @@ run_tests() {
     
     for exe in $UNIQUE_EXECUTABLES; do
         exe_name=$(basename "$exe")
+        exe_dir=$(dirname "$exe")
         print_info "Running $exe_name..."
         
         # Create a temporary output file
         output_file=$(mktemp)
         
-        # Run the executable and capture output
-        if timeout 30s "$exe" > "$output_file" 2>&1; then
+        # Change to the executable's directory before running it
+        # This ensures that relative paths in the executable work correctly
+        # Use --macro-only to avoid runtime library issues that cause segfaults
+        if (cd "$exe_dir" && timeout 30s "./$exe_name" --macro-only > "$output_file" 2>&1); then
             print_success "$exe_name completed successfully"
             
             # Show brief summary of output
@@ -427,17 +473,40 @@ show_summary() {
         echo "Generated binding files: $BINDING_COUNT"
     fi
     
-    # Check what was built
+    # Check what was built (same search logic as other functions)
     EXECUTABLE_COUNT=0
-    for dir in "$BUILD_DIR/examples" "$BUILD_DIR" "$PROJECT_ROOT"; do
+    SEARCH_LOCATIONS=(
+        "$BUILD_DIR/examples"
+        "$BUILD_DIR"
+        "$PROJECT_ROOT"
+        "$BUILD_DIR/examples/complete_test"
+        "$BUILD_DIR/examples/simple_example"
+        "$BUILD_DIR/examples/game_engine_example"
+    )
+    
+    EXECUTABLE_NAMES=(
+        "simple_example"
+        "game_engine_example" 
+        "comprehensive_test"
+        "complete_test"
+    )
+    
+    FOUND_EXECUTABLES=""
+    for dir in "${SEARCH_LOCATIONS[@]}"; do
         if [ -d "$dir" ]; then
-            for exe in simple_example game_engine_example comprehensive_test; do
+            for exe in "${EXECUTABLE_NAMES[@]}"; do
                 if [ -f "$dir/$exe" ] && [ -x "$dir/$exe" ]; then
-                    EXECUTABLE_COUNT=$((EXECUTABLE_COUNT + 1))
+                    FOUND_EXECUTABLES="$FOUND_EXECUTABLES $dir/$exe"
                 fi
             done
         fi
     done
+    
+    # Remove duplicates and count
+    if [ -n "$FOUND_EXECUTABLES" ]; then
+        UNIQUE_FOUND=$(echo "$FOUND_EXECUTABLES" | tr ' ' '\n' | sort -u)
+        EXECUTABLE_COUNT=$(echo "$UNIQUE_FOUND" | wc -l)
+    fi
     echo "Built executable programs: $EXECUTABLE_COUNT"
     
     echo ""
