@@ -61,6 +61,12 @@ double calculateDistance(double x1, double y1, double x2, double y2);
 - 多线程并行分析和生成
 - 智能任务分配和负载均衡
 
+🔄 **运行时库集成**：
+- 完整的 Lua 运行时管理器
+- 内存分配器和性能监控
+- 热重载系统支持
+- 错误处理和调试工具
+
 ## 支持的宏列表
 
 ### 核心宏（15个）
@@ -339,6 +345,12 @@ make
 
 ### 3. 使用自动化脚本
 
+自动化脚本会完成以下操作：
+1. 构建 lua_binding_generator 工具
+2. 生成 complete_test 示例的 Lua 绑定
+3. 编译完整测试项目（包括运行时库）
+4. 运行综合测试套件，验证所有功能
+
 #### Unix/Linux/macOS
 
 ```bash
@@ -401,23 +413,40 @@ scripts\build_and_test_all.bat /help
 ### 5. 生成 Lua 绑定
 
 ```bash
-# 最简形式
-./lua_binding_generator examples/simple_example.h
+# 最简形式 - 生成完整测试示例的绑定
+./lua_binding_generator examples/complete_test/headers/macro_coverage.h
 
 # 处理多个文件
-./lua_binding_generator examples/*.h
+./lua_binding_generator examples/complete_test/headers/*.h
 
 # 指定输出目录和模块名
-./lua_binding_generator --output-dir=bindings --module-name=GameCore examples/*.h
+./lua_binding_generator --output-dir=generated_bindings --module-name=CompleteTestBindings examples/complete_test/headers/*.h
 
 # 启用详细输出
-./lua_binding_generator --verbose examples/*.h
+./lua_binding_generator --verbose examples/complete_test/headers/*.h
 
 # 强制重新生成所有文件
-./lua_binding_generator --force-rebuild examples/*.h
+./lua_binding_generator --force-rebuild examples/complete_test/headers/*.h
 ```
 
-### 6. 命令行选项
+### 6. 运行完整测试示例
+
+```bash
+# 构建并运行完整测试套件
+cd examples/complete_test/build
+./CompleteTestProgram
+
+# 或者从项目根目录运行
+examples/complete_test/build/CompleteTestProgram
+
+# 运行特定的测试类别
+examples/complete_test/build/CompleteTestProgram --macro-only        # 只运行宏测试
+examples/complete_test/build/CompleteTestProgram --runtime-only      # 只运行运行时测试
+examples/complete_test/build/CompleteTestProgram --performance-only  # 只运行性能测试
+examples/complete_test/build/CompleteTestProgram --stress            # 包含压力测试
+```
+
+### 7. 命令行选项
 
 | 选项              | 默认值               | 说明                 |
 | ----------------- | -------------------- | -------------------- |
@@ -564,50 +593,79 @@ void register_GameCore_bindings(sol::state& lua) {
 ```
 lua_binding_generator/
 ├── CMakeLists.txt                      # 主构建配置
-├── main.cpp                            # 工具主程序入口
 ├── README.md                           # 项目文档（中文）
 ├── README_EN.md                        # 项目文档（英文）
 ├── include/                            # 头文件目录
-│   ├── export_macros.h                 # 智能推导宏定义
-│   ├── ast_visitor.h                   # AST 访问器
-│   ├── direct_binding_generator.h      # 硬编码绑定生成器
-│   ├── smart_inference_engine.h        # 智能推导引擎
-│   ├── incremental_generator.h         # 增量编译系统
-│   ├── compiler_detector.h             # 编译器检测
-│   ├── dynamic_compilation_database.h  # 动态编译数据库
-│   └── logger.h                        # 日志系统
+│   ├── framework/                      # 运行时库头文件
+│   │   ├── export_macros.h             # 智能推导宏定义
+│   │   ├── lua_runtime_manager.h       # Lua 运行时管理器
+│   │   ├── memory_allocator.h          # 内存分配器
+│   │   ├── hot_reload.h                # 热重载系统
+│   │   ├── result.h                    # 结果类型
+│   │   └── runtime_logger.h            # 运行时日志
+│   └── tools/                          # 工具头文件
+│       ├── ast_visitor.h               # AST 访问器
+│       ├── direct_binding_generator.h  # 硬编码绑定生成器
+│       ├── smart_inference_engine.h    # 智能推导引擎
+│       ├── incremental_generator.h     # 增量编译系统
+│       ├── compiler_detector.h         # 编译器检测
+│       └── logger.h                    # 日志系统
 ├── src/                                # 源文件目录
-│   ├── ast_visitor.cpp
-│   ├── direct_binding_generator.cpp
-│   ├── smart_inference_engine.cpp
-│   ├── incremental_generator.cpp
-│   ├── compiler_detector.cpp
-│   ├── dynamic_compilation_database.cpp
-│   └── logger.cpp
+│   ├── framework/                      # 运行时库源文件
+│   │   ├── lua_runtime_manager.cpp     # Lua 运行时管理器实现
+│   │   ├── platform_file_watcher.cpp   # 文件监控器实现
+│   │   └── runtime_logger.cpp          # 运行时日志实现
+│   └── tools/                          # 工具源文件
+│       ├── main.cpp                    # 工具主程序入口
+│       ├── ast_visitor.cpp             # AST 访问器实现
+│       ├── direct_binding_generator.cpp # 绑定生成器实现
+│       ├── smart_inference_engine.cpp  # 智能推导引擎实现
+│       ├── incremental_generator.cpp   # 增量编译系统实现
+│       ├── compiler_detector.cpp       # 编译器检测实现
+│       └── logger.cpp                  # 日志系统实现
 ├── examples/                           # 示例代码
-│   ├── simple_example.h                # 简单使用示例
-│   ├── simple_example.cpp
-│   ├── simple_main.cpp
-│   ├── game_engine.h                   # 游戏引擎示例
-│   ├── game_engine.cpp
-│   ├── game_engine_main.cpp
-│   ├── comprehensive_test.h            # 完整特性测试
-│   ├── comprehensive_test.cpp
-│   ├── comprehensive_main.cpp
-│   └── scripts/                        # Lua 测试脚本
-│       ├── test_simple.lua
-│       ├── test_game_engine.lua
-│       ├── test_comprehensive.lua
-│       ├── test_bindings_integration.lua
-│       └── README.md
+│   ├── CMakeLists.txt                  # 示例项目构建配置
+│   └── complete_test/                  # 完整测试示例
+│       ├── CMakeLists.txt              # 测试项目构建配置
+│       ├── README.md                   # 测试项目说明
+│       ├── headers/                    # 测试头文件
+│       │   ├── macro_coverage.h        # 宏覆盖测试
+│       │   └── runtime_features.h      # 运行时特性测试
+│       ├── src/                        # 测试源文件
+│       │   ├── main.cpp                # 主测试程序
+│       │   ├── macro_coverage.cpp      # 宏覆盖测试实现
+│       │   └── runtime_features.cpp    # 运行时特性实现
+│       ├── lua_scripts/               # Lua 测试脚本
+│       │   ├── main_test.lua           # 主测试脚本
+│       │   ├── macro_test.lua          # 宏测试脚本
+│       │   └── class_interaction_test.lua # 类交互测试
+│       ├── test_scripts/              # 测试脚本集合
+│       │   ├── run_all_tests.lua       # 运行所有测试
+│       │   ├── basic_macro_test.lua    # 基础宏测试
+│       │   ├── class_binding_test.lua  # 类绑定测试
+│       │   └── runtime_integration_test.lua # 运行时集成测试
+│       ├── generated_bindings/         # 生成的绑定文件
+│       │   ├── CompleteTestBindings_bindings.cpp
+│       │   └── CompleteTestBindings_bindings.h
+│       └── build/                      # 测试构建目录
 ├── scripts/                            # 自动化脚本
 │   ├── build_and_test_all.sh           # Unix/Linux/macOS 构建脚本
 │   ├── build_and_test_all.bat          # Windows 构建脚本
 │   ├── clean_thirdparty.sh             # Unix 第三方清理脚本
 │   ├── clean_thirdparty.bat            # Windows 第三方清理脚本
 │   └── README.md                       # 脚本使用说明
+├── docs/                               # 文档目录
+│   ├── framework/                      # 运行时库文档
+│   │   ├── API_REFERENCE.md            # API 参考
+│   │   └── QUICK_START.md              # 快速开始
+│   └── tools/                          # 工具文档
+│       ├── BUILD_GUIDE.md              # 构建指南
+│       ├── EXAMPLES.md                 # 示例说明
+│       └── USAGE.md                    # 使用说明
+├── cmake/                              # CMake 配置文件
+│   ├── LuaBindingRuntimeConfig.cmake.in
+│   └── lua_binding_runtime.pc.in
 ├── generated_bindings/                 # 生成的绑定文件（运行时创建）
-│   └── generated_module_bindings.cpp
 ├── build/                              # 构建目录（运行时创建）
 └── thirdparty/                         # 第三方库（自包含）
     ├── llvm-20.1.8/                    # LLVM 编译器基础设施
@@ -662,6 +720,11 @@ lua_binding_generator/
 5. **第三方库占用过多磁盘空间**
    - 使用清理脚本：`./scripts/clean_thirdparty.sh --level=full`
    - 定期清理构建产物
+
+6. **运行时库相关错误**
+   - 确保包含正确的运行时库头文件：`#include "lua_runtime_manager.h"`
+   - 检查内存分配器配置
+   - 查看测试报告：`examples/complete_test/build/test_report.txt`
 
 ### 调试选项
 

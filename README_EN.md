@@ -61,6 +61,12 @@ double calculateDistance(double x1, double y1, double x2, double y2);
 - Multi-threaded parallel analysis and generation
 - Smart task allocation and load balancing
 
+🔄 **Runtime Library Integration**:
+- Complete Lua runtime manager
+- Memory allocators and performance monitoring
+- Hot reload system support
+- Error handling and debugging tools
+
 ## Supported Macro List
 
 ### Core Macros (15)
@@ -341,6 +347,12 @@ make
 
 ### 3. Using Automation Scripts
 
+The automation scripts will perform the following operations:
+1. Build the lua_binding_generator tool
+2. Generate Lua bindings for the complete_test example
+3. Compile the complete test project (including runtime library)
+4. Run the comprehensive test suite to verify all functionality
+
 #### Unix/Linux/macOS
 
 ```bash
@@ -403,23 +415,40 @@ The project provides dedicated scripts to clean third-party library build artifa
 ### 5. Generate Lua Bindings
 
 ```bash
-# Simplest form
-./lua_binding_generator examples/simple_example.h
+# Simplest form - generate bindings for complete test example
+./lua_binding_generator examples/complete_test/headers/macro_coverage.h
 
 # Process multiple files
-./lua_binding_generator examples/*.h
+./lua_binding_generator examples/complete_test/headers/*.h
 
 # Specify output directory and module name
-./lua_binding_generator --output-dir=bindings --module-name=GameCore examples/*.h
+./lua_binding_generator --output-dir=generated_bindings --module-name=CompleteTestBindings examples/complete_test/headers/*.h
 
 # Enable verbose output
-./lua_binding_generator --verbose examples/*.h
+./lua_binding_generator --verbose examples/complete_test/headers/*.h
 
 # Force regeneration of all files
-./lua_binding_generator --force-rebuild examples/*.h
+./lua_binding_generator --force-rebuild examples/complete_test/headers/*.h
 ```
 
-### 6. Command Line Options
+### 6. Run Complete Test Example
+
+```bash
+# Build and run complete test suite
+cd examples/complete_test/build
+./CompleteTestProgram
+
+# Or run from project root directory
+examples/complete_test/build/CompleteTestProgram
+
+# Run specific test categories
+examples/complete_test/build/CompleteTestProgram --macro-only        # Run only macro tests
+examples/complete_test/build/CompleteTestProgram --runtime-only      # Run only runtime tests
+examples/complete_test/build/CompleteTestProgram --performance-only  # Run only performance tests
+examples/complete_test/build/CompleteTestProgram --stress            # Include stress tests
+```
+
+### 7. Command Line Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -566,50 +595,79 @@ void register_GameCore_bindings(sol::state& lua) {
 ```
 lua_binding_generator/
 ├── CMakeLists.txt                      # Main build configuration
-├── main.cpp                            # Tool main program entry
 ├── README.md                           # Project documentation (Chinese)
 ├── README_EN.md                        # Project documentation (English)
 ├── include/                            # Header files directory
-│   ├── export_macros.h                 # Smart inference macro definitions
-│   ├── ast_visitor.h                   # AST visitor
-│   ├── direct_binding_generator.h      # Hard-coded binding generator
-│   ├── smart_inference_engine.h        # Smart inference engine
-│   ├── incremental_generator.h         # Incremental compilation system
-│   ├── compiler_detector.h             # Compiler detection
-│   ├── dynamic_compilation_database.h  # Dynamic compilation database
-│   └── logger.h                        # Logging system
+│   ├── framework/                      # Runtime library headers
+│   │   ├── export_macros.h             # Smart inference macro definitions
+│   │   ├── lua_runtime_manager.h       # Lua runtime manager
+│   │   ├── memory_allocator.h          # Memory allocator
+│   │   ├── hot_reload.h                # Hot reload system
+│   │   ├── result.h                    # Result type
+│   │   └── runtime_logger.h            # Runtime logger
+│   └── tools/                          # Tool headers
+│       ├── ast_visitor.h               # AST visitor
+│       ├── direct_binding_generator.h  # Hard-coded binding generator
+│       ├── smart_inference_engine.h    # Smart inference engine
+│       ├── incremental_generator.h     # Incremental compilation system
+│       ├── compiler_detector.h         # Compiler detection
+│       └── logger.h                    # Logging system
 ├── src/                                # Source files directory
-│   ├── ast_visitor.cpp
-│   ├── direct_binding_generator.cpp
-│   ├── smart_inference_engine.cpp
-│   ├── incremental_generator.cpp
-│   ├── compiler_detector.cpp
-│   ├── dynamic_compilation_database.cpp
-│   └── logger.cpp
+│   ├── framework/                      # Runtime library sources
+│   │   ├── lua_runtime_manager.cpp     # Lua runtime manager implementation
+│   │   ├── platform_file_watcher.cpp   # File watcher implementation
+│   │   └── runtime_logger.cpp          # Runtime logger implementation
+│   └── tools/                          # Tool sources
+│       ├── main.cpp                    # Tool main program entry
+│       ├── ast_visitor.cpp             # AST visitor implementation
+│       ├── direct_binding_generator.cpp # Binding generator implementation
+│       ├── smart_inference_engine.cpp  # Smart inference engine implementation
+│       ├── incremental_generator.cpp   # Incremental compilation implementation
+│       ├── compiler_detector.cpp       # Compiler detection implementation
+│       └── logger.cpp                  # Logging system implementation
 ├── examples/                           # Example code
-│   ├── simple_example.h                # Simple usage example
-│   ├── simple_example.cpp
-│   ├── simple_main.cpp
-│   ├── game_engine.h                   # Game engine example
-│   ├── game_engine.cpp
-│   ├── game_engine_main.cpp
-│   ├── comprehensive_test.h            # Complete feature test
-│   ├── comprehensive_test.cpp
-│   ├── comprehensive_main.cpp
-│   └── scripts/                        # Lua test scripts
-│       ├── test_simple.lua
-│       ├── test_game_engine.lua
-│       ├── test_comprehensive.lua
-│       ├── test_bindings_integration.lua
-│       └── README.md
+│   ├── CMakeLists.txt                  # Example project build configuration
+│   └── complete_test/                  # Complete test example
+│       ├── CMakeLists.txt              # Test project build configuration
+│       ├── README.md                   # Test project documentation
+│       ├── headers/                    # Test headers
+│       │   ├── macro_coverage.h        # Macro coverage test
+│       │   └── runtime_features.h      # Runtime features test
+│       ├── src/                        # Test sources
+│       │   ├── main.cpp                # Main test program
+│       │   ├── macro_coverage.cpp      # Macro coverage test implementation
+│       │   └── runtime_features.cpp    # Runtime features implementation
+│       ├── lua_scripts/               # Lua test scripts
+│       │   ├── main_test.lua           # Main test script
+│       │   ├── macro_test.lua          # Macro test script
+│       │   └── class_interaction_test.lua # Class interaction test
+│       ├── test_scripts/              # Test script collection
+│       │   ├── run_all_tests.lua       # Run all tests
+│       │   ├── basic_macro_test.lua    # Basic macro test
+│       │   ├── class_binding_test.lua  # Class binding test
+│       │   └── runtime_integration_test.lua # Runtime integration test
+│       ├── generated_bindings/         # Generated binding files
+│       │   ├── CompleteTestBindings_bindings.cpp
+│       │   └── CompleteTestBindings_bindings.h
+│       └── build/                      # Test build directory
 ├── scripts/                            # Automation scripts
 │   ├── build_and_test_all.sh           # Unix/Linux/macOS build script
 │   ├── build_and_test_all.bat          # Windows build script
 │   ├── clean_thirdparty.sh             # Unix third-party cleanup script
 │   ├── clean_thirdparty.bat            # Windows third-party cleanup script
 │   └── README.md                       # Script usage documentation
+├── docs/                               # Documentation directory
+│   ├── framework/                      # Runtime library documentation
+│   │   ├── API_REFERENCE.md            # API reference
+│   │   └── QUICK_START.md              # Quick start guide
+│   └── tools/                          # Tool documentation
+│       ├── BUILD_GUIDE.md              # Build guide
+│       ├── EXAMPLES.md                 # Examples documentation
+│       └── USAGE.md                    # Usage guide
+├── cmake/                              # CMake configuration files
+│   ├── LuaBindingRuntimeConfig.cmake.in
+│   └── lua_binding_runtime.pc.in
 ├── generated_bindings/                 # Generated binding files (created at runtime)
-│   └── generated_module_bindings.cpp
 ├── build/                              # Build directory (created at runtime)
 └── thirdparty/                         # Third-party libraries (self-contained)
     ├── llvm-20.1.8/                    # LLVM compiler infrastructure
@@ -664,6 +722,11 @@ lua_binding_generator/
 5. **Third-party libraries taking too much disk space**
    - Use cleanup script: `./scripts/clean_thirdparty.sh --level=full`
    - Regularly clean build artifacts
+
+6. **Runtime library related errors**
+   - Ensure correct runtime library headers are included: `#include "lua_runtime_manager.h"`
+   - Check memory allocator configuration
+   - View test report: `examples/complete_test/build/test_report.txt`
 
 ### Debug Options
 
